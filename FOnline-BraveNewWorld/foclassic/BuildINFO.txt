@@ -1,0 +1,6 @@
+.\FOnline-BraveNewWorld\foclassic>rmdir /S /Q out     
+.\FOnline-BraveNewWorld\foclassic>cmake -S . -B out\build\Win32-Release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+.\FOnline-BraveNewWorld\foclassic>cmake --build out\build\Win32-Release --target ClientDX 
+
+exe generated at 
+.\FOnline-BraveNewWorld\foclassic\out\build\Win32-Release\Source
