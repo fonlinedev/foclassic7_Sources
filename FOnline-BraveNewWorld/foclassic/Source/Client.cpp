@@ -3543,14 +3543,6 @@ void FOClient::Net_SendLogIn( const char* name, const char* pass )
 
     uint uid1 = *UID1;
     Bout << NETMSG_LOGIN;
-    WriteLog(
-        "NET DEBUG: stage=%u version=%u uid4=%u salt_login=%u login_success=%u\n",
-        FOCLASSIC_STAGE,
-        FOCLASSIC_VERSION,
-        *UID4,
-        NETSALT_LOGIN,
-        NETMSG_LOGIN_SUCCESS
-    );
     Bout << (uint16)FOCLASSIC_STAGE;
     Bout << (uint16)FOCLASSIC_VERSION;
     uint uid4 = *UID4;
