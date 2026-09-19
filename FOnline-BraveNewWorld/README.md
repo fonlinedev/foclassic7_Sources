@@ -40,3 +40,6 @@ Jinexd Jack interface: (download from Dropbox if there is fresh version, so my L
 2025-05-15 Last update is Hex Trow Flares to detect sneaker.
 https://www.dropbox.com/scl/fi/14p4sekr2759wknimslue/FOClassic-BNW_2025-05-15_FlareHexThrow.zip?rlkey=d1o4ckq07sn8fx1cecnvknwfa&st=36fwisuw&dl=0
 
+## VS 2026
+copy the file MSVCCompat.cpp to the generated folder C:\Games\FOnlineServer\BraveNewWorld\FOnline-BraveNewWorld\foclassic\SDK.VS2026\Source and run 
+`cmake --build SDK.VS2026 --config Release --target ClientDX -- /m:1

@@ -2059,7 +2059,7 @@ void FOServer::Process_Text( Client* cl )
                 {
                     const char* text2;
                     std::string textStr;
-                    textStr.append(std::to_string((unsigned long long)(cl->GetId())));
+                    textStr.append( std::to_string( (unsigned long long)(cl->GetId() ) ) );
                     textStr.append( ": " );
                     textStr.append( cl->GetName() );
                     textStr.append( ": " );
@@ -2083,7 +2083,7 @@ void FOServer::Process_Text( Client* cl )
                 {
                     const char* text2;
                     std::string textStr;
-                    textStr.append(std::to_string((unsigned long long)(cl->GetId())));
+                    textStr.append( std::to_string( (unsigned long long)(cl->GetId() ) ) );
                     textStr.append( ": " );
                     textStr.append( cl->GetName() );
                     textStr.append( ": " );

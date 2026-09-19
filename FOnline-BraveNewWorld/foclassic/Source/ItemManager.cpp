@@ -1464,7 +1464,7 @@ void ItemManager::RadioSendText( Critter* cr, const char* text, uint16 text_len,
         if( channels[i] % 2 == 0 )
         {
             // text2 = textStr.c_str;
-            textStr.append(std::to_string((unsigned long long)(cr->GetId())));
+            textStr.append( std::to_string( (unsigned long long)(cr->GetId() ) ) );
             textStr.append( ": " );
             textStr.append( cr->GetName() );
             textStr.append( ": " );

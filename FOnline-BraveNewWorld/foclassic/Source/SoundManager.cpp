@@ -61,14 +61,14 @@ bool SoundManager::Init()
     if( isActive )
         return true;
 
-    WriteLog("Sound manager initialization...\n");
+    WriteLog( "Sound manager initialization...\n" );
 
     PaError err = Pa_Initialize();
 
     if( err != paNoError )
     {
-        WriteLog("PortAudio unavailable: %s (%d). Sound disabled.\n",
-                 Pa_GetErrorText(err), err);
+        WriteLog( "PortAudio unavailable: %s (%d). Sound disabled.\n",
+                  Pa_GetErrorText( err ), err );
 
         isActive = false;
         return true;
@@ -76,7 +76,7 @@ bool SoundManager::Init()
 
     isActive = true;
 
-    WriteLog("Sound manager initialization complete.\n");
+    WriteLog( "Sound manager initialization complete.\n" );
     return true;
 }
 
@@ -234,8 +234,8 @@ bool SoundManager::ProcessSound( Sound* sound, uint8* output, uint outputSamples
 
 Sound* SoundManager::Load( const char* fname, int path_type )
 {
-	if( !isActive )
-		return NULL;
+    if( !isActive )
+        return NULL;
     char fname_[MAX_FOPATH];
     Str::Copy( fname_, fname );
 
