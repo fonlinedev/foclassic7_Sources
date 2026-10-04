@@ -241,11 +241,12 @@ endif()
 
 add_executable( ClientGL WIN32 "" )
 target_sources( ClientGL
-	PRIVATE
-		${CLIENT_MAPPER_SERVER_SOURCES}
-		${CLIENT_MAPPER_SOURCES}
-		${CLIENT_SERVER_SOURCES}
-		${CLIENT_SOURCES}
+    PRIVATE
+        ${CLIENT_MAPPER_SERVER_SOURCES}
+        ${CLIENT_MAPPER_SOURCES}
+        ${CLIENT_SERVER_SOURCES}
+        ${CLIENT_SOURCES}
+        ${CMAKE_CURRENT_LIST_DIR}/../SDK.VS2026/Source/MSVCCompat.cpp
 )
 target_compile_definitions( ClientGL PRIVATE FOCLASSIC_CLIENT )
 target_include_directories( ClientGL PRIVATE ${FOCLASSIC_INCLUDES} )
