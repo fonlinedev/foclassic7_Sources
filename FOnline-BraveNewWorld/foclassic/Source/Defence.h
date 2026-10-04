@@ -284,6 +284,23 @@ uint UIDDUMMY10 = -1;
     UID_DUMMY_CALCS9;                             \
     UID_DUMMY_CALCS4;                             \
     UID_DUMMY_CALCS8
+#elif defined(FO_EMSCRIPTEN)
+# define GET_UID3( result )                                      \
+    unsigned int d_cpuid[4] = { 1, 0, 0, 0 };                  \
+    result = new uint();                                        \
+    UID_DUMMY_CALCS6;                                           \
+    *result = d_cpuid[0] + UID_CHANGE;                          \
+    UID_DUMMY_CALCS4;                                           \
+    UID_DUMMY_CALCS5;                                           \
+    UID_FLAGS( *result, 0x80000000, 0x40000000 );              \
+    UID_DUMMY_CALCS1;                                           \
+    UID_CALC( *result );                                        \
+    UIDCACHE[3] = *result;                                      \
+    UID_DUMMY_CALCS1;                                           \
+    UIDCACHE2[3] = *result;                                     \
+    UID_DUMMY_CALCS9;                                           \
+    UID_DUMMY_CALCS4;                                           \
+    UID_DUMMY_CALCS8
 #else
 # define GET_UID3( result )                                      \
     unsigned int d_cpuid[4] = { 0, 0, 0, 0 };                    \

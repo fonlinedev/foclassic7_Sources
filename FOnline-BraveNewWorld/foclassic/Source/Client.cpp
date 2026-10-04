@@ -1,7 +1,22 @@
 #include "Core.h"
 
+#ifndef FO_EMSCRIPTEN
 #include "FL/Fl.H"
+#endif
+
+#ifndef FO_EMSCRIPTEN
 #include "FL/x.H"
+#else
+#define FL_KEYDOWN 1
+#define FL_KEYUP 2
+#define FL_MOUSEWHEEL 3
+#define FL_PUSH 4
+#define FL_RELEASE 5
+#define FL_LEFT_MOUSE 1
+#define FL_MIDDLE_MOUSE 2
+#define FL_RIGHT_MOUSE 3
+#define FL_BUTTON(x) (x)
+#endif
 
 #include "Access.h"
 #include "App.h"
@@ -83,8 +98,10 @@ FOClient::FOClient() : Active( false )
     Animations.resize( 10000 );
 
     #ifndef FO_D3D
-    CurVideo = NULL;
-    MusicVolumeRestore = -1;
+    #ifndef FO_EMSCRIPTEN
+	CurVideo = NULL;
+	MusicVolumeRestore = -1;
+	#endif
     #endif
 
     UIDFail = false;
@@ -323,12 +340,19 @@ bool FOClient::Init()
     params.PreRestoreFunc = &_PreRestore;
     params.PostRestoreFunc = &_PostRestore;
     if( !SprMngr.Init( params ) )
-        return false;
+	{
+		printf( "FO WEB INIT FAIL: SprMngr.Init\n" );
+		return false;
+	}
     GET_UID1( UID1 );
 
     // Fonts
     if( !SprMngr.LoadFontFO( FONT_TYPE_FO, "OldDefault" ) )
-        return false;
+	{
+		printf( "FO WEB: OldDefault font FAILED\n" );
+		return false;
+	}
+	printf( "FO WEB: OldDefault font OK\n" );
     if( !SprMngr.LoadFontFO( FONT_TYPE_NUM, "Numbers" ) )
         return false;
     if( !SprMngr.LoadFontFO( FONT_TYPE_BIG_NUM, "BigNumbers" ) )
@@ -539,7 +563,7 @@ bool FOClient::Init()
     {
         LogTryConnect();
     }
-    #ifndef FO_D3D
+    #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
     // Intro
     else if( !CommandLine->IsOption( "SkipIntro" ) )
     {
@@ -903,7 +927,7 @@ int FOClient::MainLoop()
     }
     Script::ScriptGarbager();
 
-    #ifndef FO_D3D
+    #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
     // Video
     if( IsVideoPlayed() )
     {
@@ -1220,7 +1244,7 @@ void FOClient::ParseKeyboard()
         Keyb::KeyPressed[dikdw] = true;
 
         // Video
-        #ifndef FO_D3D
+        #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
         if( IsVideoPlayed() )
         {
             if( IsCanStopVideo() && (dikdw == DIK_ESCAPE || dikdw == DIK_SPACE || dikdw == DIK_RETURN || dikdw == DIK_NUMPADENTER) )
@@ -1602,7 +1626,12 @@ void FOClient::ParseMouse()
 {
     // Mouse position
     int mx = 0, my = 0;
-    Fl::get_mouse( mx, my );
+    #ifdef FO_EMSCRIPTEN
+		mx = GameOpt.MouseX;
+		my = GameOpt.MouseY;
+	#else
+		Fl::get_mouse( mx, my );
+	#endif
     #ifdef FO_D3D
     GameOpt.MouseX = mx - (!GameOpt.FullScreen ? MainWindow->x() : 0);
     GameOpt.MouseY = my - (!GameOpt.FullScreen ? MainWindow->y() : 0);
@@ -1816,7 +1845,7 @@ void FOClient::ParseMouse()
         int event_button = events[i + 1];
         int event_dy = -events[i + 2];
 
-        #ifndef FO_D3D
+        #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
         // Stop video
         if( IsVideoPlayed() )
         {
@@ -6089,10 +6118,18 @@ void FOClient::Net_OnLoadMap()
         ShowMainScreen( CLIENT_MAIN_SCREEN_WORLDMAP );
         Net_SendLoadMapOk();
         #ifndef FO_D3D
-        if( IsVideoPlayed() )
-            MusicAfterVideo = MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) );
-        else
-            SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#ifdef FO_EMSCRIPTEN
+			SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#else
+		#ifdef FO_EMSCRIPTEN
+			SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#else
+			if( IsVideoPlayed() )
+				MusicAfterVideo = MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) );
+			else
+				SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#endif
+		#endif
         #else
         SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
         #endif
@@ -6125,10 +6162,18 @@ void FOClient::Net_OnLoadMap()
     LookBorders.clear();
     ShootBorders.clear();
     #ifndef FO_D3D
-    if( IsVideoPlayed() )
-        MusicAfterVideo = MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) );
-    else
+    #ifdef FO_EMSCRIPTEN
         SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+	#else
+		#ifdef FO_EMSCRIPTEN
+			SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#else
+			if( IsVideoPlayed() )
+				MusicAfterVideo = MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) );
+			else
+				SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
+		#endif
+	#endif
     #else
     SndMngr.PlayMusic( MsgGM->GetStr( STR_MAP_MUSIC_( map_pid ) ) );
     #endif
@@ -9107,7 +9152,12 @@ bool FOClient::IsCurInWindow()
             return true;
 
         int mx = 0, my = 0;
-        Fl::get_mouse( mx, my );
+        #ifdef FO_EMSCRIPTEN
+			mx = GameOpt.MouseX;
+			my = GameOpt.MouseY;
+		#else
+			Fl::get_mouse( mx, my );
+		#endif
         return mx >= MainWindow->x() && mx <= MainWindow->x() + MainWindow->w() &&
                my >= MainWindow->y() && my <= MainWindow->y() + MainWindow->h();
     }
@@ -9548,6 +9598,7 @@ void FOClient::SoundProcess()
 }
 
 #ifndef FO_D3D
+#ifndef FO_EMSCRIPTEN
 void FOClient::AddVideo( const char* video_name, bool can_stop, bool clear_sequence )
 {
     // Stop current
@@ -9938,6 +9989,7 @@ void FOClient::StopVideo()
     }
 }
 #endif
+#endif
 
 uint FOClient::AnimLoad( uint name_hash, uint8 dir, int res_type )
 {
@@ -10206,10 +10258,25 @@ bool FOClient::ReloadScripts( bool from_init /* = false */ )
             break;
 
         const char*  module_name = msg_script.GetStr( i );
-        uint         len;
-        const uint8* bytecode = msg_script.GetBinary( i + 1, len );
-        if( !bytecode )
-            break;
+		uint         len;
+		const uint8* bytecode = msg_script.GetBinary( i + 1, len );
+		if( !bytecode )
+			break;
+
+		uint b0 = len > 0 ? bytecode[0] : 0;
+		uint b1 = len > 1 ? bytecode[1] : 0;
+		uint b2 = len > 2 ? bytecode[2] : 0;
+		uint b3 = len > 3 ? bytecode[3] : 0;
+
+		printf(
+			"FO WEB: Loading script<%s>, bytecode size<%u>, head<%02X %02X %02X %02X>\n",
+			module_name,
+			len,
+			b0,
+			b1,
+			b2,
+			b3
+		);
 
         if( !Script::LoadScript( module_name, bytecode, len ) )
         {
@@ -11000,7 +11067,9 @@ void FOClient::SScriptFunc::Global_PlayVideo( ScriptString& video_name, bool can
 {
     #ifndef FO_D3D
     SndMngr.StopMusic();
-    Self->AddVideo( video_name.c_str(), can_stop, true );
+    #ifndef FO_EMSCRIPTEN
+		Self->AddVideo( video_name.c_str(), can_stop, true );
+	#endif
     #endif
 }
 

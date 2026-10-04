@@ -25,7 +25,7 @@ void UpdateTick( void* );
 Thread        TimerUpdateThread;
 volatile uint TimerTick = 0;
 volatile bool QuitTick = false;
-# ifdef FO_MACOSX
+# if defined(FO_MACOSX) || defined(FO_EMSCRIPTEN)
 double        InitialAccurateTick = 0;
 # endif
 #endif
@@ -43,7 +43,7 @@ void Timer::Init()
     QueryPerformanceFrequency( (LARGE_INTEGER*)&QPCFrequency );
     timeBeginPeriod( 1 );
     #else
-    # ifdef FO_MACOSX
+    # if defined(FO_MACOSX) || defined(FO_EMSCRIPTEN)
     InitialAccurateTick = AccurateTick();
     # endif
     SetTick();

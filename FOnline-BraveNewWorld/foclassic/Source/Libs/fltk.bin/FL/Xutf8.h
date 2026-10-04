@@ -23,7 +23,9 @@ extern "C" {
 
 #include <X11/X.h>
 #include <X11/Xlib.h>
+#ifndef __EMSCRIPTEN__
 #include <X11/Xlocale.h>
+#endif
 #include <X11/Xutil.h>
 
 typedef struct {

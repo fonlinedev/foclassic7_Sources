@@ -194,6 +194,17 @@ configure_file( "${SCRIPTS_HEADER_TEMPLATE}" "${RELEASE_HEADERS_DIR}/FOClassic.f
 
 add_subdirectory( Docs )
 add_subdirectory( Source )
+
+if( EMSCRIPTEN )
+    target_link_options( ClientGL PRIVATE
+        "--use-preload-plugins"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sSTACK_SIZE=1048576"
+        "--preload-file"
+        "${CMAKE_SOURCE_DIR}/webdata/data@/data"
+    )
+endif()
+
 if( WIN32 )
 	add_subdirectory( Extensions.Dynamic )
 endif()

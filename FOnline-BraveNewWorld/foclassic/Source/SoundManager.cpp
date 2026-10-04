@@ -1,9 +1,13 @@
 #include "Core.h"
+#ifndef FO_EMSCRIPTEN
 #include <objbase.h>
 #include "acmstrm.h"
 #include "ogg/codec.h"
 #include "ogg/vorbisfile.h"
+#endif
+#ifndef FO_EMSCRIPTEN
 #include "portaudio.h"
+#endif
 
 #include "AutoPointers.h"
 #include "FileManager.h"
@@ -21,7 +25,9 @@ SoundManager SndMngr;
 class Sound
 {
 public:
-    PaStream* Stream;
+    #ifndef FO_EMSCRIPTEN
+		PaStream* Stream;
+	#endif
 
     uint8*    Buf;
     uint      BufSize;
@@ -38,9 +44,14 @@ public:
     bool      Streamable;
     enum { WAV, ACM, OGG } StreamType;
 
+     #ifndef FO_EMSCRIPTEN
     OggVorbis_File OggDescriptor;
+    #endif
 
-    Sound() : Stream( NULL ),
+    Sound() :
+	#ifndef FO_EMSCRIPTEN
+		Stream( NULL ),
+	#endif
         Buf( NULL ), BufSize( 0 ), BufCur( 0 ),
         SampleSize( 0 ), Channels( 0 ), SampleRate( 0 ),
         IsMusic( false ), NextPlay( 0 ), RepeatTime( 0 ),
@@ -48,16 +59,21 @@ public:
     ~Sound()
     {
         SAFEDELA( Buf );
+        #ifndef FO_EMSCRIPTEN
         if( Streamable && StreamType == OGG )
             ov_clear( &OggDescriptor );
+        #endif
+        #ifndef FO_EMSCRIPTEN
         if( Stream )
             Pa_CloseStream( Stream );
+		#endif
     }
 };
 
 // SoundManager
 bool SoundManager::Init()
 {
+#ifndef FO_EMSCRIPTEN
     if( isActive )
         return true;
 
@@ -77,11 +93,15 @@ bool SoundManager::Init()
     isActive = true;
 
     WriteLog( "Sound manager initialization complete.\n" );
+#else
+    isActive = false;
+#endif
     return true;
 }
 
 void SoundManager::Finish()
 {
+    #ifndef FO_EMSCRIPTEN
     WriteLog( "Sound manager finish.\n" );
 
     if( isActive )
@@ -92,10 +112,14 @@ void SoundManager::Finish()
     }
 
     WriteLog( "Sound manager finish complete.\n" );
+	#else
+    isActive = false;
+	#endif
 }
 
 void SoundManager::Process()
 {
+    #ifndef FO_EMSCRIPTEN
     for( auto it = soundsActive.begin(); it != soundsActive.end();)
     {
         Sound* sound = *it;
@@ -109,10 +133,12 @@ void SoundManager::Process()
             ++it;
         }
     }
+#endif
 }
 
 void SoundManager::ClearSounds()
 {
+    #ifndef FO_EMSCRIPTEN
     for( auto it = soundsActive.begin(); it != soundsActive.end(); ++it )
     {
         Sound* sound = *it;
@@ -120,6 +146,7 @@ void SoundManager::ClearSounds()
         delete sound;
     }
     soundsActive.clear();
+	#endif
 }
 
 int SoundManager::GetSoundVolume()
@@ -207,8 +234,10 @@ bool SoundManager::ProcessSound( Sound* sound, uint8* output, uint outputSamples
         if( Timer::GameTick() >= sound->NextPlay )
         {
             // Set buffer to beginning
+            #ifndef FO_EMSCRIPTEN
             if( sound->Streamable && sound->StreamType == Sound::OGG )
                 ov_raw_seek( &sound->OggDescriptor, 0 );
+			#endif
             sound->BufCur = 0;
 
             // Stream
@@ -269,6 +298,7 @@ Sound* SoundManager::Load( const char* fname, int path_type )
         return NULL;
     }
 
+    #ifndef FO_EMSCRIPTEN
     struct PaStreamProcessor
     {
         static int Process( const void* input, void* output,
@@ -294,6 +324,10 @@ Sound* SoundManager::Load( const char* fname, int path_type )
 
     soundsActive.push_back( sound );
     return sound;
+#else
+    delete sound;
+    return NULL;
+#endif
 }
 
 bool SoundManager::LoadWAV( Sound* sound, const char* fname, int path_type )
@@ -382,7 +416,18 @@ bool SoundManager::LoadWAV( Sound* sound, const char* fname, int path_type )
 
     return true;
 }
+#ifdef FO_EMSCRIPTEN
+bool SoundManager::LoadACM( Sound* sound, const char* fname, int path_type )
+{
+    return false;
+}
 
+bool SoundManager::LoadOGG( Sound* sound, const char* fname, int path_type )
+{
+    return false;
+}
+#endif
+#ifndef FO_EMSCRIPTEN
 bool SoundManager::LoadACM( Sound* sound, const char* fname, int path_type )
 {
     FileManager fm;
@@ -414,7 +459,9 @@ bool SoundManager::LoadACM( Sound* sound, const char* fname, int path_type )
 
     return true;
 }
+#endif
 
+#ifndef FO_EMSCRIPTEN
 size_t Ogg_read_func( void* ptr, size_t size, size_t nmemb, void* datasource )
 {
     FileManager* fm = (FileManager*)datasource;
@@ -581,7 +628,7 @@ bool SoundManager::StreamingOGG( Sound* sound )
     sound->BufSize = decoded;
     return true;
 }
-
+#endif
 bool SoundManager::PlaySound( const char* name )
 {
     if( !isActive || !GetSoundVolume() )
@@ -589,7 +636,9 @@ bool SoundManager::PlaySound( const char* name )
     Sound* sound = Load( name, PATH_SND_SFX );
     if( !sound )
         return false;
+    #ifndef FO_EMSCRIPTEN
     Pa_StartStream( sound->Stream );
+	#endif
     return true;
 }
 
@@ -670,7 +719,9 @@ bool SoundManager::PlayMusic( const char* fname, uint pos, uint repeat )
 
     sound->IsMusic = true;
     sound->RepeatTime = repeat;
+    #ifndef FO_EMSCRIPTEN
     Pa_StartStream( sound->Stream );
+	#endif
     return true;
 }
 
@@ -682,7 +733,9 @@ void SoundManager::StopMusic()
         Sound* sound = *it;
         if( sound->IsMusic )
         {
+            #ifndef FO_EMSCRIPTEN
             Pa_AbortStream( sound->Stream );
+			#endif
             delete sound;
             it = soundsActive.erase( it );
         }

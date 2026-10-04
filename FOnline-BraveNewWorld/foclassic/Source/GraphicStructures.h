@@ -43,12 +43,16 @@ typedef std::vector<Matrix*>    MatrixPtrVec;
 # define MATRIX_TRANSPOSE( m )    m.Transpose()
 #else
 # include <GL/glew.h>
-# define GL( expr )               { expr; if( GameOpt.OpenGLDebug ) { GLenum err__ = glGetError(); if( err__ != GL_NO_ERROR ) { WriteLogF( _FUNC_, " - " # expr ", error<0x%08X - %s>.\n", err__, gluErrorString( err__ ) ); ExitProcess( 0 ); } } }
+# ifdef FO_EMSCRIPTEN
+#  define GL( expr )              { expr; if( GameOpt.OpenGLDebug ) { GLenum err__ = glGetError(); if( err__ != GL_NO_ERROR ) { WriteLogF( _FUNC_, " - " # expr ", error<0x%08X.\n", err__ ); } } }
+# else
+#  define GL( expr )              { expr; if( GameOpt.OpenGLDebug ) { GLenum err__ = glGetError(); if( err__ != GL_NO_ERROR ) { WriteLogF( _FUNC_, " - " # expr ", error<0x%08X - %s>.\n", err__, gluErrorString( err__ ) ); ExitProcess( 0 ); } } }
+# endif
 # ifdef FO_WINDOWS
 #  include <GL/wglew.h>
 
 #  define WGL( expr )             { if( !(expr) ) { if( GameOpt.OpenGLDebug ) { WriteLogF( _FUNC_, " - " # expr ", error<0x%08X>.\n", GetLastError() ); ExitProcess( 0 ); } } }
-# else
+# elif !defined(FO_EMSCRIPTEN)
 #  include <GL/glxew.h>
 # endif
 

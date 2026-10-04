@@ -2606,7 +2606,9 @@ endcopy:
         // Restore registers
         pop  ecx
     }
-    #elif defined (FO_GCC)
+	#elif defined (FO_EMSCRIPTEN)
+		return 0;
+    #elif defined (FO_GCC) && !defined (FO_EMSCRIPTEN)
     // It is not possible to rely on ESP or BSP to refer to variables or arguments on the stack
     // depending on compiler settings BSP may not even be used, and the ESP is not always on the
     // same offset from the local variables. Because the code adjusts the ESP register it is not
@@ -2752,23 +2754,31 @@ void* Script::GetReturnedObject()
 
 float Script::GetReturnedFloat()
 {
-    float            f;
-    #ifdef FO_MSVC
+    float f = 0;
+
+#if defined(FO_EMSCRIPTEN)
+    return f;
+#elif defined(FO_MSVC)
     __asm fstp dword ptr[f]
-    #else // FO_GCC
+#else // FO_GCC
     asm ("fstps %0 \n" : "=m" (f) );
-    #endif
+#endif
+
     return f;
 }
 
 double Script::GetReturnedDouble()
 {
-    double           d;
-    #ifdef FO_MSVC
+    double d = 0;
+
+#if defined(FO_EMSCRIPTEN)
+    return d;
+#elif defined(FO_MSVC)
     __asm fstp qword ptr[d]
-    #else // FO_GCC
+#else // FO_GCC
     asm ("fstpl %0 \n" : "=m" (d) );
-    #endif
+#endif
+
     return d;
 }
 

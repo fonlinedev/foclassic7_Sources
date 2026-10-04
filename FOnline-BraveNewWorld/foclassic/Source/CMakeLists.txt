@@ -26,14 +26,24 @@ elseif( WIN32 )
 	)
 endif()
 
-if( UNIX )
-	find_package( X11 REQUIRED )
-	set( PLATFORM_CLIENT_LIBS ${X11_LIBRARIES} Xrender Xft Xi Xinerama fontconfig )
-	set( PLATFORM_MAPPER_LIBS ${PLATFORM_CLIENT_LIBS} )
-	set( PLATFORM_SERVER_LIBS ${X11_LIBRARIES} Xft Xinerama fontconfig )
+if( EMSCRIPTEN )
+
+    # Browser / WebAssembly has no X11 platform libraries.
+    set( PLATFORM_CLIENT_LIBS )
+    set( PLATFORM_MAPPER_LIBS )
+    set( PLATFORM_SERVER_LIBS )
+
+elseif( UNIX )
+
+    find_package( X11 REQUIRED )
+    set( PLATFORM_CLIENT_LIBS ${X11_LIBRARIES} Xrender Xft Xi Xinerama fontconfig )
+    set( PLATFORM_MAPPER_LIBS ${PLATFORM_CLIENT_LIBS} )
+    set( PLATFORM_SERVER_LIBS ${X11_LIBRARIES} Xft Xinerama fontconfig )
+
 elseif( WIN32 )
 
-	set( PLATFORM_CLIENT_LIBS Iphlpapi )
+    set( PLATFORM_CLIENT_LIBS Iphlpapi )
+
 endif()
 
 add_library( Platform INTERFACE )
@@ -78,7 +88,11 @@ set( DX_LIBS glew dx9 OpenGL::GLU )
 set( GL_LIBS fltkgl glew OpenGL::GL OpenGL::GLU )
 
 list( APPEND CLIENT_DX_LIBS  ${CLIENT_LIBS}        ${DX_LIBS} )
-list( APPEND CLIENT_GL_LIBS  ${CLIENT_LIBS} theora ${GL_LIBS} )
+if( EMSCRIPTEN )
+        list( APPEND CLIENT_GL_LIBS ${FOCLASSIC_LIBS} acm assimp )        
+else()
+        list( APPEND CLIENT_GL_LIBS ${CLIENT_LIBS} theora ${GL_LIBS} )
+endif()
 list( APPEND MAPPER_DX_LIBS  ${MAPPER_LIBS}        ${DX_LIBS} )
 list( APPEND MAPPER_GL_LIBS  ${MAPPER_LIBS}        ${GL_LIBS} )
 
@@ -475,8 +489,7 @@ foreach( target IN LISTS FOCLASSIC_APPS )
 		# copy executables
 		add_custom_command( TARGET ${target}
 			POST_BUILD
-			COMMAND ${CMAKE_COMMAND} -E echo "${target} ${arrow} $<SHELL_PATH:${copy_dir}/$<TARGET_FILE_NAME:${target}>>"
-			COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:${target}> ${copy_dir}/$<TARGET_FILE_NAME:${target}>
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target}>" "${copy_dir}/$<TARGET_FILE_NAME:${target}>"
 		)
 
 		if( MSVC )

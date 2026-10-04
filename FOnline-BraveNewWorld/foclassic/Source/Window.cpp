@@ -1,7 +1,9 @@
 #include "Core.h"
 
-#include "FL/Fl.H"
-#include "FL/x.H"
+#ifndef FO_EMSCRIPTEN
+# include "FL/Fl.H"
+# include "FL/x.H"
+#endif
 
 #include "ConfigFile.h"
 #include "GameOptions.h"
@@ -13,7 +15,7 @@
 using namespace std;
 
 #pragma TODO("Move to Text.cpp")
-void ReplaceString( string& str, const string& from,     const string& to )
+void ReplaceString( string& str, const string& from, const string& to )
 {
     size_t pos = 0;
     while( (pos = str.find( from, pos ) ) != string::npos )
@@ -60,7 +62,6 @@ const char* GetWindowName()
         // Singleplayer appendix
         if( Singleplayer )
             Str::Append( window_name, " Singleplayer" );
-
     }
 
     return window_name;
@@ -71,6 +72,27 @@ const char* GetWindowName()
 #endif
 
 #if defined (FOCLASSIC_CLIENT) || defined (FOCLASSIC_MAPPER)
+
+#ifdef FO_EMSCRIPTEN
+
+FOWindow::FOWindow() :
+    Focused( true ),
+    WindowX( 0 ),
+    WindowY( 0 ),
+    WindowW( MODE_WIDTH ),
+    WindowH( MODE_HEIGHT )
+{
+}
+
+int FOWindow::handle( int event )
+{
+    // Browser input will be handled separately.
+    // Keep the same event interface for the rest of the client.
+    return 0;
+}
+
+#else
+
 FOWindow::FOWindow() : Fl_Window( 0, 0, "" ), Focused( true )
 {
     label( GetWindowName() );
@@ -101,7 +123,7 @@ FOWindow::FOWindow() : Fl_Window( 0, 0, "" ), Focused( true )
     # ifdef FO_WINDOWS
     ShowCursor( FALSE );
     # else
-    char   data[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    char data[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
     XColor black;
     black.red = black.green = black.blue = 0;
     Pixmap nodata = XCreateBitmapFromData( fl_display, fl_xid( this ), data, 8, 8 );
@@ -142,6 +164,7 @@ int FOWindow::handle( int event )
         KeyboardEventsText.push_back( Fl::event_text() );
         return 1;
     }
+
     // Mouse
     else if( event == FL_PUSH || event == FL_RELEASE || (event == FL_MOUSEWHEEL && Fl::event_dy() != 0) )
     {
@@ -159,5 +182,7 @@ int FOWindow::handle( int event )
 
     return 0;
 }
+
+#endif // FO_EMSCRIPTEN
 
 #endif // FOCLASSIC_CLIENT || FOCLASSIC_MAPPER

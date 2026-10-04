@@ -34,6 +34,8 @@
 // Detect operating system
 #if defined (_WIN32) || defined (_WIN64)
 # define FO_WINDOWS
+#elif defined (__EMSCRIPTEN__)
+# define FO_EMSCRIPTEN
 #elif defined (__linux__)
 # define FO_LINUX
 #elif defined (__APPLE__)
@@ -52,7 +54,9 @@
 #endif
 
 // Detect CPU
-#if (defined (FO_MSVC) && defined (_M_IX86) ) || (defined (FO_GCC) && !defined (__LP64__) )
+#if defined (__EMSCRIPTEN__)
+# define FO_X64
+#elif (defined (FO_MSVC) && defined (_M_IX86) ) || (defined (FO_GCC) && !defined (__LP64__) )
 # define FO_X86
 #elif (defined (FO_MSVC) && defined (_M_X64) ) || (defined (FO_GCC) && defined (__LP64__) )
 # define FO_X64

@@ -1105,7 +1105,7 @@ void AdminManager( void* port_ )
     sin.sin_family = AF_INET;
     sin.sin_port = htons( (uint16)(size_t)port_ );
     sin.sin_addr.s_addr = INADDR_ANY;
-    if( bind( listen_sock, (sockaddr*)&sin, sizeof(sin) ) == SOCKET_ERROR )
+    if( ::bind( listen_sock, (sockaddr*)&sin, sizeof(sin) ) == SOCKET_ERROR )
     {
         WriteLog( "Can't bind listen socket for admin manager.\n" );
         closesocket( listen_sock );

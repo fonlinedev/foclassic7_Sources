@@ -2,12 +2,19 @@
 
 #include <time.h>
 
-#ifndef FO_D3D
-# include <GL/glew.h>
-# include "FL/gl.h"
+#ifdef FO_EMSCRIPTEN
+#include <emscripten/html5.h>
+#include <emscripten/emscripten.h>
 #endif
-#include "FL/x.H"
-#include "il.h"
+
+#ifndef FO_D3D
+# ifndef FO_EMSCRIPTEN
+#  include <GL/glew.h>
+#  include "FL/gl.h"
+#  include "FL/x.H"
+#  include "il.h"
+# endif
+#endif
 
 #include "Crypt.h"
 #include "F2Palette.h"
@@ -29,6 +36,112 @@
 #endif
 
 using namespace std;
+
+#ifdef FO_EMSCRIPTEN
+
+EM_JS(int, FO_GetPreloadedImageSize, (const char* fname, int* out_w, int* out_h), {
+    const name = UTF8ToString(fname);
+
+    const images =
+        (typeof Browser !== 'undefined' && Browser.preloadedImages)
+        ? Browser.preloadedImages
+        : null;
+
+    console.log("[FO FONT DEBUG] requested:", name);
+    console.log("[FO FONT DEBUG] Browser exists:", typeof Browser !== 'undefined');
+    console.log("[FO FONT DEBUG] preloadedImages exists:", !!images);
+
+    if (images)
+        console.log("[FO FONT DEBUG] image keys:", Object.keys(images));
+
+    if (!images)
+        return 0;
+
+    let canvas =
+        images[name] ||
+        images['/' + name] ||
+        images['/data/' + name] ||
+        images['data/' + name];
+
+    if (!canvas) {
+        for (const key in images) {
+            if (key === name || key.endsWith('/' + name)) {
+                canvas = images[key];
+                break;
+            }
+        }
+    }
+
+    if (!canvas)
+        return 0;
+
+    HEAP32[out_w >> 2] = canvas.width;
+    HEAP32[out_h >> 2] = canvas.height;
+    return 1;
+});
+
+EM_JS(int, FO_CopyPreloadedImageBGRA, (const char* fname, int dst, int byte_count), {
+    const name = UTF8ToString(fname);
+    const images =
+        (typeof Browser !== 'undefined' && Browser.preloadedImages)
+        ? Browser.preloadedImages
+        : null;
+
+    if (!images)
+        return 0;
+
+    let canvas =
+        images[name] ||
+        images['/' + name] ||
+        images['/data/' + name] ||
+        images['data/' + name];
+
+    if (!canvas) {
+        for (const key in images) {
+            if (key === name || key.endsWith('/' + name)) {
+                canvas = images[key];
+                break;
+            }
+        }
+    }
+
+    if (!canvas)
+        return 0;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx)
+        return 0;
+
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+    if (pixels.length !== byte_count)
+        return 0;
+
+    for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i + 0];
+        const g = pixels[i + 1];
+        const b = pixels[i + 2];
+        const a = pixels[i + 3];
+
+        HEAPU8[dst + i + 0] = b;
+        HEAPU8[dst + i + 1] = g;
+        HEAPU8[dst + i + 2] = r;
+
+        // Same transparent-blue handling used by the native loader.
+        HEAPU8[dst + i + 3] =
+            (r === 0 && g === 0 && b === 255 && a === 255) ? 0 : a;
+    }
+
+    return 1;
+});
+
+#endif
+
+#ifdef FO_EMSCRIPTEN
+#define GLEW_EXT_framebuffer_object 0
+#define GLEW_EXT_framebuffer_multisample 0
+#define GLEW_EXT_packed_depth_stencil 0
+#endif
 
 SpriteManager SprMngr;
 AnyFrames*    SpriteManager::DummyAnimation = NULL;
@@ -196,9 +309,34 @@ bool SpriteManager::Init( SpriteMngrParams& params )
     D3D_HR( direct3D->CreateDevice( D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, fl_xid( MainWindow ), vproc, &presentParams, &d3dDevice ) );
     #else
     // Create context
-    gl_start();
-    GL( glDisable( GL_SCISSOR_TEST ) );
-    GL( glDrawBuffer( GL_BACK ) );
+    #ifdef FO_EMSCRIPTEN
+    EmscriptenWebGLContextAttributes attrs;
+    emscripten_webgl_init_context_attributes( &attrs );
+    attrs.alpha = 0;
+    attrs.depth = 1;
+    attrs.stencil = 1;
+    attrs.antialias = 1;
+
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webgl_context = emscripten_webgl_create_context( "#canvas", &attrs );
+    if( webgl_context <= 0 )
+    {
+        WriteLog( "Can't create WebGL context.\n" );
+        return false;
+    }
+
+    if( emscripten_webgl_make_context_current( webgl_context ) != EMSCRIPTEN_RESULT_SUCCESS )
+    {
+        WriteLog( "Can't activate WebGL context.\n" );
+        return false;
+    }
+	#else
+		gl_start();
+	#endif
+
+	GL( glDisable( GL_SCISSOR_TEST ) );
+    #ifndef FO_EMSCRIPTEN
+	GL( glDrawBuffer( GL_BACK ) );
+	#endif
     GL( glViewport( 0, 0, MainWindow->w(), MainWindow->h() ) );
     # ifdef FO_WINDOWS
     deviceContext = wglGetCurrentDC();
@@ -207,24 +345,26 @@ bool SpriteManager::Init( SpriteMngrParams& params )
 
     // Initialize GLEW
     GLenum glew_result = glewInit();
-    if( glew_result != GLEW_OK )
-    {
-        WriteLog( "GLEW not initialized, result<%u>.\n", glew_result );
-        return false;
-    }
+	if( glew_result != GLEW_OK )
+	{
+		printf( "FO WEB SPRITE FAIL: glewInit result=%u\n", glew_result );
+		WriteLog( "GLEW not initialized, result<%u>.\n", glew_result );
+		return false;
+	}
 
     // Check OpenGL extensions
-    # define CHECK_EXTENSION( ext_prefix, ext, critical  )                        \
-        if( !ext_prefix ## ext )                                                  \
-        {                                                                         \
-            const char* msg = (critical ? "Critical" : "Not critical");           \
+	# define CHECK_EXTENSION( ext_prefix, ext, critical  )                        \
+		if( !ext_prefix ## ext )                                                  \
+		{                                                                         \
+			const char* msg = (critical ? "Critical" : "Not critical");           \
+			printf( "FO WEB GL: missing extension " #ext " (%s)\n", msg );       \
             WriteLog( "OpenGL extension '" # ext "' not supported. %s.\n", msg ); \
             if( critical )                                                        \
                 extension_errors++;                                               \
         }
     uint extension_errors = 0;
     CHECK_EXTENSION( GLEW_, VERSION_2_0, true );
-    CHECK_EXTENSION( GLEW_, ARB_vertex_buffer_object, true );
+    CHECK_EXTENSION( GLEW_, ARB_vertex_buffer_object, false );
     CHECK_EXTENSION( GLEW_, ARB_vertex_array_object, false );
     CHECK_EXTENSION( GLEW_, ARB_framebuffer_object, false );
     # ifdef FO_WINDOWS
@@ -243,7 +383,7 @@ bool SpriteManager::Init( SpriteMngrParams& params )
     # else
     if( !GLEW_ARB_framebuffer_object )
     {
-        CHECK_EXTENSION( GLEW_, EXT_framebuffer_object, true );
+        CHECK_EXTENSION( GLEW_, EXT_framebuffer_object, false );
         CHECK_EXTENSION( GLEW_, EXT_framebuffer_multisample, false );
         CHECK_EXTENSION( GLEW_, EXT_packed_depth_stencil, false );
     }
@@ -251,7 +391,10 @@ bool SpriteManager::Init( SpriteMngrParams& params )
     CHECK_EXTENSION( GLEW_, ARB_texture_multisample, false );
     CHECK_EXTENSION( GLEW_, ARB_get_program_binary, false );
     if( extension_errors )
-        return false;
+	{
+		printf( "FO WEB SPRITE FAIL: extension_errors=%u\n", extension_errors );
+		return false;
+	}
     # undef CHECK_EXTENSION
     #endif
 
@@ -302,10 +445,16 @@ bool SpriteManager::Init( SpriteMngrParams& params )
         return false;
 
     // Render stuff
-    if( !InitRenderStates() )
-        return false;
+	if( !InitRenderStates() )
+	{
+		printf( "FO WEB SPRITE FAIL: InitRenderStates\n" );
+		return false;
+	}
     if( !InitBuffers() )
-        return false;
+	{
+		printf( "FO WEB SPRITE FAIL: InitBuffers\n" );
+		return false;
+	}
 
     // Sprites buffer
     sprData.resize( SPR_BUFFER_COUNT );
@@ -335,18 +484,22 @@ bool SpriteManager::Init( SpriteMngrParams& params )
 
     // Default effects
     if( !GraphicLoader::LoadDefaultEffects( d3dDevice ) )
-        return false;
+	{
+		printf( "FO WEB SPRITE FAIL: LoadDefaultEffects\n" );
+		return false;
+	}
 
     #ifndef FO_D3D
     // Render targets
-    if( !CreateRenderTarget( rtMain, true, false, 0, 0, true ) ||
-        !CreateRenderTarget( rtContours, false ) ||
-        !CreateRenderTarget( rtContoursMid, false ) ||
-        !CreateRenderTarget( rt3D, true ) )
-    {
-        WriteLog( "Can't create render targets.\n" );
-        return false;
-    }
+	if( !CreateRenderTarget( rtMain, true, false, 0, 0, true ) ||
+		!CreateRenderTarget( rtContours, false ) ||
+		!CreateRenderTarget( rtContoursMid, false ) ||
+		!CreateRenderTarget( rt3D, true ) )
+	{
+		printf( "FO WEB SPRITE FAIL: CreateRenderTarget\n" );
+		WriteLog( "Can't create render targets.\n" );
+		return false;
+	}
     CreateRenderTarget( rt3DMS, true, true );
     #endif
 
@@ -356,10 +509,10 @@ bool SpriteManager::Init( SpriteMngrParams& params )
     #else
     GL( glClear( GL_COLOR_BUFFER_BIT ) );
     # ifdef FO_WINDOWS
-    SwapBuffers( deviceContext );
-    # else
-    glXSwapBuffers( fl_display, fl_window );
-    # endif
+		SwapBuffers( deviceContext );
+	# elif !defined(FO_EMSCRIPTEN)
+		glXSwapBuffers( fl_display, fl_window );
+	# endif
     PushRenderTarget( rtMain );
     #endif
 
@@ -548,30 +701,75 @@ bool SpriteManager::InitRenderStates()
     D3D_HR( d3dDevice->SetRenderState( D3DRS_AMBIENT, COLOR_XRGB( 80, 80, 80 ) ) );
     D3D_HR( d3dDevice->SetRenderState( D3DRS_NORMALIZENORMALS, TRUE ) );
     #else
-    GL( glMatrixMode( GL_PROJECTION ) );
-    GL( glLoadIdentity() );
-    GL( gluOrtho2D( 0, modeWidth, modeHeight, 0 ) );
-    GL( glGetFloatv( GL_PROJECTION_MATRIX, projectionMatrix ) );
-    GL( glClearColor( 0.0f, 0.0f, 0.0f, 1.0f ) );
+    #ifdef FO_EMSCRIPTEN
+	projectionMatrix[0] = 2.0f / modeWidth;
+	projectionMatrix[1] = 0.0f;
+	projectionMatrix[2] = 0.0f;
+	projectionMatrix[3] = 0.0f;
+	projectionMatrix[4] = 0.0f;
+	projectionMatrix[5] = -2.0f / modeHeight;
+	projectionMatrix[6] = 0.0f;
+	projectionMatrix[7] = 0.0f;
+	projectionMatrix[8] = 0.0f;
+	projectionMatrix[9] = 0.0f;
+	projectionMatrix[10] = -1.0f;
+	projectionMatrix[11] = 0.0f;
+	projectionMatrix[12] = -1.0f;
+	projectionMatrix[13] = 1.0f;
+	projectionMatrix[14] = 0.0f;
+	projectionMatrix[15] = 1.0f;
+	#else
+	GL( glMatrixMode( GL_PROJECTION ) );
+	GL( glLoadIdentity() );
+	#ifdef FO_EMSCRIPTEN
+        projectionMatrix[0] = 2.0f / modeWidth;
+        projectionMatrix[1] = 0.0f;
+        projectionMatrix[2] = 0.0f;
+        projectionMatrix[3] = 0.0f;
+        projectionMatrix[4] = 0.0f;
+        projectionMatrix[5] = -2.0f / modeHeight;
+        projectionMatrix[6] = 0.0f;
+        projectionMatrix[7] = 0.0f;
+        projectionMatrix[8] = 0.0f;
+        projectionMatrix[9] = 0.0f;
+        projectionMatrix[10] = -1.0f;
+        projectionMatrix[11] = 0.0f;
+        projectionMatrix[12] = -1.0f;
+        projectionMatrix[13] = 1.0f;
+        projectionMatrix[14] = 0.0f;
+        projectionMatrix[15] = 1.0f;
+#else
+        GL( glOrtho( 0, modeWidth, modeHeight, 0, -1, 1 ) );
+        GL( glGetFloatv( GL_PROJECTION_MATRIX, projectionMatrix ) );
+#endif
+	#endif
     # ifdef FO_WINDOWS
     if( !GameOpt.VSync && WGLEW_EXT_swap_control )
         wglSwapIntervalEXT( 0 );
-    # else
+	# elif !defined(FO_EMSCRIPTEN)
     if( !GameOpt.VSync && GLXEW_SGI_swap_control )
         glXSwapIntervalSGI( 0 );
     else if( !GameOpt.VSync && GLXEW_EXT_swap_control )
         glXSwapIntervalEXT( glXGetCurrentDisplay(), glXGetCurrentDrawable(), 0 );
-    # endif
+	# endif
+	#ifndef FO_EMSCRIPTEN
     GL( glEnable( GL_TEXTURE_2D ) );
+	#endif
     GL( glEnable( GL_BLEND ) );
     GL( glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA ) );
-    GL( glEnable( GL_ALPHA_TEST ) );
-    GL( glAlphaFunc( GL_GEQUAL, 1.0f / 255.0f ) );
-    GL( glShadeModel( GL_SMOOTH ) );
+    #ifndef FO_EMSCRIPTEN
+	GL( glEnable( GL_ALPHA_TEST ) );
+	GL( glAlphaFunc( GL_GEQUAL, 1.0f / 255.0f ) );
+	GL( glShadeModel( GL_SMOOTH ) );
+	#endif
+    #ifndef FO_EMSCRIPTEN
     GL( glEnable( GL_POINT_SMOOTH ) );
     GL( glEnable( GL_LINE_SMOOTH ) );
+	#endif
     GL( glDisable( GL_CULL_FACE ) );
+	#ifndef FO_EMSCRIPTEN
     GL( glDisable( GL_LIGHTING ) );
+	#endif
     GL( glActiveTexture( GL_TEXTURE0 ) );
     #endif
 
@@ -653,7 +851,9 @@ void SpriteManager::EndScene()
     # ifdef FO_WINDOWS
     SwapBuffers( deviceContext );
     # else
-    glXSwapBuffers( fl_display, fl_window );
+    #ifndef FO_EMSCRIPTEN
+		glXSwapBuffers( fl_display, fl_window );
+	#endif
     # endif
     if( GameOpt.OpenGLDebug && glGetError() != GL_NO_ERROR )
     {
@@ -700,7 +900,10 @@ bool SpriteManager::Restore()
     if( !InitRenderStates() )
         return false;
     if( !InitBuffers() )
-        return false;
+	{
+		printf( "FO WEB SPRITE FAIL: InitBuffers\n" );
+		return false;
+	}
     if( PostRestore )
         (*PostRestore)();
     if( !Animation3d::StartUp( d3dDevice ) )
@@ -719,6 +922,10 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
 
     // Multisampling
     static int samples = -1;
+	#ifdef FO_EMSCRIPTEN
+    multisampling = false;
+	#endif
+	#ifndef FO_EMSCRIPTEN
     if( multisampling && samples == -1 && (GLEW_ARB_framebuffer_object || (GLEW_EXT_framebuffer_object && GLEW_EXT_framebuffer_multisample) ) )
     {
         if( GLEW_ARB_texture_multisample && GameOpt.MultiSampling != 0 )
@@ -742,6 +949,7 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
             samples = 0;
         }
     }
+	#endif
     if( multisampling && samples <= 1 )
         return false;
 
@@ -868,9 +1076,9 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
         GL( glBindTexture( GL_TEXTURE_2D, tex->Id ) );
         GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex_linear ? GL_LINEAR : GL_NEAREST ) );
         GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex_linear ? GL_LINEAR : GL_NEAREST ) );
-        GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP ) );
-        GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP ) );
-        GL( glTexImage2D( GL_TEXTURE_2D, 0, 4, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, tex->Data ) );
+        GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE ) );
+		GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE ) );
+		GL( glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex->Data ) );
         if( GLEW_ARB_framebuffer_object )
         {
             GL( glFramebufferTexture2D( GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex->Id, 0 ) );
@@ -880,6 +1088,7 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
             GL( glFramebufferTexture2DEXT( GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, tex->Id, 0 ) );
         }
     }
+	#ifndef FO_EMSCRIPTEN
     else
     {
         tex->Samples = (float)samples;
@@ -894,6 +1103,7 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
             GL( glFramebufferTexture2DEXT( GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D_MULTISAMPLE, tex->Id, 0 ) );
         }
     }
+	#endif
     rt.TargetTexture = tex;
 
     // Depth / stencil
@@ -904,13 +1114,15 @@ bool SpriteManager::CreateRenderTarget( RenderTarget& rt, bool depth_stencil, bo
             GL( glGenRenderbuffers( 1, &rt.DepthStencilBuffer ) );
             GL( glBindRenderbuffer( GL_RENDERBUFFER, rt.DepthStencilBuffer ) );
             if( !multisampling )
-            {
-                GL( glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height ) );
-            }
-            else
-            {
-                GL( glRenderbufferStorageMultisample( GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height ) );
-            }
+			{
+				GL( glRenderbufferStorage( GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height ) );
+			}
+			#ifndef FO_EMSCRIPTEN
+			else
+			{
+				GL( glRenderbufferStorageMultisample( GL_RENDERBUFFER, samples, GL_DEPTH24_STENCIL8, width, height ) );
+			}
+			#endif
             GL( glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rt.DepthStencilBuffer ) );
             GL( glFramebufferRenderbuffer( GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rt.DepthStencilBuffer ) );
         }
@@ -1289,9 +1501,9 @@ Surface* SpriteManager::CreateNewSurface( int w, int h )
     GL( glPixelStorei( GL_UNPACK_ALIGNMENT, 1 ) );
     GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, SurfFilterNearest ? GL_NEAREST : GL_LINEAR ) );
     GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, SurfFilterNearest ? GL_NEAREST : GL_LINEAR ) );
-    GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP ) );
-    GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP ) );
-    GL( glTexImage2D( GL_TEXTURE_2D, 0, 4, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, tex->Data ) );
+    GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE ) );
+	GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE ) );
+	GL( glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex->Data ) );
     #endif
 
     Surface* surf = new Surface();
@@ -1405,7 +1617,11 @@ void SpriteManager::SaveSufaces()
     #endif
 }
 
-#ifndef FO_D3D
+#ifdef FO_EMSCRIPTEN
+void SpriteManager::SaveTexture( Texture* tex, const char* fname, bool flip )
+{
+}
+#else
 void SpriteManager::SaveTexture( Texture* tex, const char* fname, bool flip )
 {
     // Size
@@ -3529,7 +3745,56 @@ AnyFrames* SpriteManager::LoadAnimationBam( const char* fname, int path_type )
 
     return anim;
 }
+#ifdef FO_EMSCRIPTEN
 
+AnyFrames* SpriteManager::LoadAnimationOther( const char* fname, int path_type )
+{
+    int w = 0;
+    int h = 0;
+
+    if( !FO_GetPreloadedImageSize( fname, &w, &h ) )
+    {
+        WriteLogF( _FUNC_, " - Preloaded image<%s> not found.\n", fname );
+        return NULL;
+    }
+
+    if( w <= 0 || h <= 0 )
+        return NULL;
+
+    uint size = 12 + (uint)w * (uint)h * 4;
+    uint8* data = new uint8[size];
+    if( !data )
+        return NULL;
+
+    *( (uint*)data + 1 ) = (uint)w;
+    *( (uint*)data + 2 ) = (uint)h;
+
+    uint pixel_size = (uint)w * (uint)h * 4;
+
+    if( !FO_CopyPreloadedImageBGRA( fname, (int)(data + 12), (int)pixel_size ) )
+    {
+        delete[] data;
+        return NULL;
+    }
+
+    SpriteInfo* si = new SpriteInfo();
+
+    uint result = FillSurfaceFromMemory( si, data, size );
+    if( !result )
+    {
+        delete si;
+        return NULL;
+    }
+
+    AnyFrames* anim = CreateAnimation( 1, 100 );
+    if( !anim )
+        return NULL;
+
+    anim->Ind[0] = result;
+    return anim;
+}
+
+#else
 AnyFrames* SpriteManager::LoadAnimationOther( const char* fname, int path_type )
 {
     // Load file
@@ -3606,7 +3871,7 @@ AnyFrames* SpriteManager::LoadAnimationOther( const char* fname, int path_type )
     anim->Ind[0] = result;
     return anim;
 }
-
+#endif
 uint SpriteManager::Render3dSprite( Animation3d* anim3d, int dir, int time_proc )
 {
     #ifdef FO_D3D
@@ -3736,10 +4001,29 @@ uint SpriteManager::Render3dSprite( Animation3d* anim3d, int dir, int time_proc 
     if( rt3DMSSprite.FBO )
     {
         Flush();
-        GL( glMatrixMode( GL_PROJECTION ) );
-        GL( glLoadIdentity() );
-        GL( gluOrtho2D( 0, rt_width, rt_height, 0 ) );
-        GL( glGetFloatv( GL_PROJECTION_MATRIX, projectionMatrix ) );
+        #ifdef FO_EMSCRIPTEN
+		projectionMatrix[0] = 2.0f / rt_width;
+		projectionMatrix[1] = 0.0f;
+		projectionMatrix[2] = 0.0f;
+		projectionMatrix[3] = 0.0f;
+		projectionMatrix[4] = 0.0f;
+		projectionMatrix[5] = -2.0f / rt_height;
+		projectionMatrix[6] = 0.0f;
+		projectionMatrix[7] = 0.0f;
+		projectionMatrix[8] = 0.0f;
+		projectionMatrix[9] = 0.0f;
+		projectionMatrix[10] = -1.0f;
+		projectionMatrix[11] = 0.0f;
+		projectionMatrix[12] = -1.0f;
+		projectionMatrix[13] = 1.0f;
+		projectionMatrix[14] = 0.0f;
+		projectionMatrix[15] = 1.0f;
+		#else
+		GL( glMatrixMode( GL_PROJECTION ) );
+		GL( glLoadIdentity() );
+		GL( glOrtho( 0, rt_width, rt_height, 0, -1, 1 ) );
+		GL( glGetFloatv( GL_PROJECTION_MATRIX, projectionMatrix ) );
+		#endif
         GL( glViewport( 0, 0, rt_width, rt_height ) );
 
         PushRenderTarget( rt3DMS );
@@ -3748,8 +4032,27 @@ uint SpriteManager::Render3dSprite( Animation3d* anim3d, int dir, int time_proc 
 
         GL( glMatrixMode( GL_PROJECTION ) );
         GL( glLoadIdentity() );
-        GL( gluOrtho2D( 0, modeWidth, modeHeight, 0 ) );
+        #ifdef FO_EMSCRIPTEN
+        projectionMatrix[0] = 2.0f / modeWidth;
+        projectionMatrix[1] = 0.0f;
+        projectionMatrix[2] = 0.0f;
+        projectionMatrix[3] = 0.0f;
+        projectionMatrix[4] = 0.0f;
+        projectionMatrix[5] = -2.0f / modeHeight;
+        projectionMatrix[6] = 0.0f;
+        projectionMatrix[7] = 0.0f;
+        projectionMatrix[8] = 0.0f;
+        projectionMatrix[9] = 0.0f;
+        projectionMatrix[10] = -1.0f;
+        projectionMatrix[11] = 0.0f;
+        projectionMatrix[12] = -1.0f;
+        projectionMatrix[13] = 1.0f;
+        projectionMatrix[14] = 0.0f;
+        projectionMatrix[15] = 1.0f;
+		#else
+        GL( glOrtho( 0, modeWidth, modeHeight, 0, -1, 1 ) );
         GL( glGetFloatv( GL_PROJECTION_MATRIX, projectionMatrix ) );
+		#endif
         GL( glViewport( 0, 0, modeWidth, modeHeight ) );
     }
 

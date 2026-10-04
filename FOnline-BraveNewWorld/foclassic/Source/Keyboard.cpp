@@ -1,6 +1,8 @@
 #include "Core.h"
 
+#ifndef FO_EMSCRIPTEN
 #include "FL/Fl.H"
+#endif
 
 #include "GameOptions.h"
 #include "SpriteManager.h"
@@ -148,7 +150,9 @@ void Keyb::GetCharInternal( uint8 dik, const char* dik_text, char* str, uint* po
     // Clipboard
     else if( CtrlDwn && !ShiftDwn && str_len > 0 && (dik == DIK_C || dik == DIK_X) )
     {
-        Fl::copy( str, Str::Length( str ), 1 );
+        #ifndef FO_EMSCRIPTEN
+			Fl::copy( str, Str::Length( str ), 1 );
+		#endif
         if( dik == DIK_X )
         {
             *str = '\0';
@@ -157,7 +161,9 @@ void Keyb::GetCharInternal( uint8 dik, const char* dik_text, char* str, uint* po
     }
     else if( CtrlDwn && !ShiftDwn && dik == DIK_V )
     {
-        Fl::paste( *MainWindow, 1 );
+        #ifndef FO_EMSCRIPTEN
+			Fl::paste( *MainWindow, 1 );
+		#endif
     }
     else if( dik == DIK_CLIPBOARD_PASTE )
     {

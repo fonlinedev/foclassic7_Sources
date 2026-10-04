@@ -14,6 +14,6 @@ STATIC_ASSERT( sizeof(size_t) == sizeof(void*) );
 
 #if defined (FO_X86)
 STATIC_ASSERT( sizeof(size_t) == 4 );
-#elif defined (FO_X64)
+#elif defined (FO_X64) && !defined (FO_EMSCRIPTEN)
 STATIC_ASSERT( sizeof(size_t) == 8 );
 #endif

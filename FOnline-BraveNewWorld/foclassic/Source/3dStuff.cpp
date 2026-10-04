@@ -35,6 +35,42 @@ GLuint FBODepth = 0;
 GLuint DepthTexId = 0;
 #endif
 
+#ifdef FO_EMSCRIPTEN
+void VecProject( const Vector& v, Matrix& world, Vector& out )
+{
+    double modelview[16];
+    for( uint i = 0; i < 16; i++ )
+        modelview[i] = *(world[0] + i);
+
+    double projection[16];
+    for( uint i = 0; i < 16; i++ )
+        projection[i] = *(MatrixProj[0] + i);
+
+    double x = v.x;
+    double y = v.y;
+    double z = v.z;
+
+    double tx = modelview[0] * x + modelview[1] * y + modelview[2] * z + modelview[3];
+    double ty = modelview[4] * x + modelview[5] * y + modelview[6] * z + modelview[7];
+    double tz = modelview[8] * x + modelview[9] * y + modelview[10] * z + modelview[11];
+    double tw = modelview[12] * x + modelview[13] * y + modelview[14] * z + modelview[15];
+
+    double px = projection[0] * tx + projection[1] * ty + projection[2] * tz + projection[3] * tw;
+    double py = projection[4] * tx + projection[5] * ty + projection[6] * tz + projection[7] * tw;
+    double pz = projection[8] * tx + projection[9] * ty + projection[10] * tz + projection[11] * tw;
+    double pw = projection[12] * tx + projection[13] * ty + projection[14] * tz + projection[15] * tw;
+
+    if( pw != 0.0 ) {
+        px /= pw;
+        py /= pw;
+        pz /= pw;
+    }
+
+    out.x = (float)( ( px + 1.0 ) * 0.5 * ModeWidth );
+    out.y = (float)( ( py + 1.0 ) * 0.5 * ModeHeight );
+    out.z = (float)( ( pz + 1.0 ) * 0.5 );
+}
+#else
 void VecProject( const Vector& v, Matrix& world, Vector& out )
 {
     double modelview[16];
@@ -43,7 +79,7 @@ void VecProject( const Vector& v, Matrix& world, Vector& out )
     double projection[16];
     for( uint i = 0; i < 16; i++ )
         projection[i] = *(MatrixProj[0] + i);
-    int    viewport[4] = { 0, 0, ModeWidth, ModeHeight };
+    int viewport[4] = { 0, 0, ModeWidth, ModeHeight };
 
     double x = 0.0, y = 0.0, z = 0.0;
     gluProject( v.x, v.y, v.z, modelview, projection, viewport, &x, &y, &z );
@@ -52,7 +88,49 @@ void VecProject( const Vector& v, Matrix& world, Vector& out )
     out.y = (float)y;
     out.z = (float)z;
 }
+#endif
 
+#ifdef FO_EMSCRIPTEN
+void VecUnproject( const Vector& v, Vector& out )
+{
+    double modelview[16];
+    for( uint i = 0; i < 16; i++ )
+        modelview[i] = *(MatrixEmpty[0] + i);
+
+    double projection[16];
+    for( uint i = 0; i < 16; i++ )
+        projection[i] = *(MatrixProj[0] + i);
+
+    Matrix inverse;
+    for( uint i = 0; i < 16; i++ )
+        inverse[0][i] = (float)modelview[i];
+
+    inverse.Inverse();
+
+    double winX = v.x;
+    double winY = (double)ModeHeight - v.y;
+    double winZ = v.z;
+
+    double x = winX / (double)ModeWidth * 2.0 - 1.0;
+    double y = winY / (double)ModeHeight * 2.0 - 1.0;
+    double z = winZ * 2.0 - 1.0;
+
+    double tx = inverse[0][0] * x + inverse[0][1] * y + inverse[0][2] * z + inverse[0][3];
+    double ty = inverse[1][0] * x + inverse[1][1] * y + inverse[1][2] * z + inverse[1][3];
+    double tz = inverse[2][0] * x + inverse[2][1] * y + inverse[2][2] * z + inverse[2][3];
+    double tw = inverse[3][0] * x + inverse[3][1] * y + inverse[3][2] * z + inverse[3][3];
+
+    if( tw != 0.0 ) {
+        tx /= tw;
+        ty /= tw;
+        tz /= tw;
+    }
+
+    out.x = (float)tx;
+    out.y = (float)ty;
+    out.z = (float)tz;
+}
+#else
 void VecUnproject( const Vector& v, Vector& out )
 {
     double modelview[16];
@@ -61,7 +139,7 @@ void VecUnproject( const Vector& v, Vector& out )
     double projection[16];
     for( uint i = 0; i < 16; i++ )
         projection[i] = *(MatrixProj[0] + i);
-    int    viewport[4] = { 0, 0, ModeWidth, ModeHeight };
+    int viewport[4] = { 0, 0, ModeWidth, ModeHeight };
 
     double x = 0.0, y = 0.0, z = 0.0;
     #ifdef FO_D3D
@@ -78,6 +156,7 @@ void VecUnproject( const Vector& v, Vector& out )
     out.y = -out.y;
     #endif
 }
+#endif
 
 /************************************************************************/
 /* Animation3d                                                          */
@@ -1764,23 +1843,36 @@ bool Animation3d::SetScreenSize( int width, int height )
     MATRIX_TRANSPOSE( MatrixProj );
     #else
     float k = (float)ModeHeight / 768.0f;
-    GL( glMatrixMode( GL_PROJECTION ) );
-    GL( glLoadIdentity() );
-    GL( glOrtho( 0, 18.65 * k * (float)ModeWidth / ModeHeight, 0, 18.65 * k, -20.0, 20.0 ) );
-    GL( glGetFloatv( GL_PROJECTION_MATRIX, MatrixProj[0] ) );
+    float right = 18.65f * k * (float)ModeWidth / ModeHeight;
+    float top = 18.65f * k;
+    float left = 0.0f;
+    float bottom = 0.0f;
+    float znear = -20.0f;
+    float zfar = 20.0f;
+    MatrixProj = Matrix(
+        2.0f / (right - left), 0.0f, 0.0f, -(right + left) / (right - left),
+        0.0f, 2.0f / (top - bottom), 0.0f, -(top + bottom) / (top - bottom),
+        0.0f, 0.0f, -2.0f / (zfar - znear), -(zfar + znear) / (zfar - znear),
+        0.0f, 0.0f, 0.0f, 1.0f );
     #endif
 
     // View
-    #ifdef FO_D3D
-    D3DXMatrixLookAtLH( (D3DXMATRIX*)&MatrixView, (D3DXVECTOR3*)&Vector( 0.0f, 0.0f, -FixedZ ), (D3DXVECTOR3*)&Vector( 0.0f, 0.0f, 0.0f ), (D3DXVECTOR3*)&Vector( 0.0f, 1.0f, 0.0f ) );
-    D3D_HR( D3DDevice->SetTransform( D3DTS_VIEW, (D3DXMATRIX*)&MatrixView ) );
-    MATRIX_TRANSPOSE( MatrixView );
-    #else
-    GL( glMatrixMode( GL_MODELVIEW ) );
-    GL( glLoadIdentity() );
-    GL( gluLookAt( 0.0, 0.0, FixedZ, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0 ) );
-    GL( glGetFloatv( GL_MODELVIEW_MATRIX, MatrixView[0] ) );
-    #endif
+	#ifdef FO_D3D
+	D3DXMatrixLookAtLH( (D3DXMATRIX*)&MatrixView, (D3DXVECTOR3*)&Vector( 0.0f, 0.0f, -FixedZ ), (D3DXVECTOR3*)&Vector( 0.0f, 0.0f, 0.0f ), (D3DXVECTOR3*)&Vector( 0.0f, 1.0f, 0.0f ) );
+	D3D_HR( D3DDevice->SetTransform( D3DTS_VIEW, (D3DXMATRIX*)&MatrixView ) );
+	MATRIX_TRANSPOSE( MatrixView );
+	#elif defined(FO_EMSCRIPTEN)
+	MatrixView = Matrix(
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, -FixedZ, 1.0f );
+	#else
+	GL( glMatrixMode( GL_MODELVIEW ) );
+	GL( glLoadIdentity() );
+	GL( gluLookAt( 0.0, 0.0, FixedZ, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0 ) );
+	GL( glGetFloatv( GL_MODELVIEW_MATRIX, MatrixView[0] ) );
+	#endif
     MatrixViewProj = MatrixProj * MatrixView;
 
     // View port

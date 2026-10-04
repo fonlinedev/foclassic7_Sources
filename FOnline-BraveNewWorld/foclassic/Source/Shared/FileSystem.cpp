@@ -189,6 +189,9 @@ bool ResolvePath( char* path )
 # include <sys/stat.h>
 # include <dirent.h>
 # include <unistd.h>
+#ifdef FO_EMSCRIPTEN
+# include <emscripten/fetch.h>
+#endif
 
 struct FileDesc
 {
@@ -196,8 +199,9 @@ struct FileDesc
     bool  writeThrough;
 };
 
+
 void* FileOpen( const char* fname, bool write, bool write_through /* = false */ )
-{
+{	
     FILE* f = fopen( fname, write ? "wb" : "rb" );
     if( !f )
         return NULL;
@@ -326,52 +330,56 @@ bool FileFindNext( void* descriptor, FIND_DATA& fd )
     // Cast descriptor
     FileFind* ff = (FileFind*)descriptor;
 
-    // Read entire
-    struct dirent* ent = readdir( ff->d );
-    if( !ent )
-        return false;
-
-    // Skip '.' and '..'
-    if( Str::Compare( ent->d_name, "." ) || Str::Compare( ent->d_name, ".." ) )
-        return FileFindNext( descriptor, fd );
-
-    // Read entire information
-    bool        valid = false;
-    bool        dir = false;
-    char        fname[MAX_FOPATH];
-    Str::Format( fname, "%s%s", ff->path, ent->d_name );
-    struct stat st;
-    if( !stat( fname, &st ) )
+    while( true )
     {
-        dir = S_ISDIR( st.st_mode );
-        if( dir || S_ISREG( st.st_mode ) )
-            valid = true;
+        // Read entire
+        struct dirent* ent = readdir( ff->d );
+        if( !ent )
+            return false;
+
+        // Skip '.' and '..'
+        if( Str::Compare( ent->d_name, "." ) || Str::Compare( ent->d_name, ".." ) )
+            continue;
+
+        // Read entire information
+        bool        valid = false;
+        bool        dir = false;
+        char        fname[MAX_FOPATH];
+        Str::Format( fname, "%s%s", ff->path, ent->d_name );
+        struct stat st;
+        if( !stat( fname, &st ) )
+        {
+            dir = S_ISDIR( st.st_mode );
+            if( dir || S_ISREG( st.st_mode ) )
+                valid = true;
+        }
+
+        // Skip not dirs and regular files
+        if( !valid )
+            continue;
+
+        // Find by extensions
+        if( ff->ext[0] )
+        {
+            // Skip dirs
+            if( dir )
+                continue;
+
+            // Compare extension
+            const char* ext = NULL;
+            for( const char* name = ent->d_name; *name; name++ )
+                if( *name == '.' )
+                    ext = name;
+
+            if( !ext || !*(++ext) || !Str::CompareCase( ext, ff->ext ) )
+                continue;
+        }
+
+        // Fill find data
+        Str::Copy( fd.FileName, ent->d_name );
+        fd.IsDirectory = dir;
+        return true;
     }
-
-    // Skip not dirs and regular files
-    if( !valid )
-        return FileFindNext( descriptor, fd );
-
-    // Find by extensions
-    if( ff->ext[0] )
-    {
-        // Skip dirs
-        if( dir )
-            return FileFindNext( descriptor, fd );
-
-        // Compare extension
-        const char* ext = NULL;
-        for( const char* name = ent->d_name; *name; name++ )
-            if( *name == '.' )
-                ext = name;
-        if( !ext || !*(++ext) || !Str::CompareCase( ext, ff->ext ) )
-            return FileFindNext( descriptor, fd );
-    }
-
-    // Fill find data
-    Str::Copy( fd.FileName, ent->d_name );
-    fd.IsDirectory = dir;
-    return true;
 }
 
 void FileFindClose( void* descriptor )
@@ -386,7 +394,7 @@ void FileFindClose( void* descriptor )
 
 bool MakeDirectory( const char* path )
 {
-    mkdir( path, ALLPERMS ) == 0;
+    return mkdir(path, 0777) == 0;
 }
 
 char* FixPathSlashes( char* path )
@@ -403,10 +411,16 @@ char* FixPathSlashes( char* path )
 
 bool ResolvePath( char* path )
 {
+#ifdef FO_EMSCRIPTEN
+    for( char* p = path; *p; ++p )
+        if( *p == '\\' )
+            *p = '/';
+    return true;
+#else
     char path_[4096];
     realpath( path, path_ );
     Str::Copy( path, MAX_FOPATH, path_ );
     return true;
+#endif
 }
-
 #endif

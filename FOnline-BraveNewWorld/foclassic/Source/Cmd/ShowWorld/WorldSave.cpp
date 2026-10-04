@@ -783,7 +783,7 @@ bool WorldSave::LoadItems( vector<Object::ItemV1*>& items )
 
             if( !item->Lexems )
             {
-                LogLoadError( "%s : duplicate fail", GetDataName( ID::Item, "Lexems", item->Index ) );
+                LogLoadError( "%s : duplicate fail", GetDataName( ID::Item, "Lexems", item->Index ).c_str() );
                 delete item;
                 return false;
             }

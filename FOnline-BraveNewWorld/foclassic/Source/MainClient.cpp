@@ -1,11 +1,15 @@
 #include "Core.h"
-
+#ifdef FO_EMSCRIPTEN
+#include <emscripten.h>
+#endif
 #include <locale.h>
 #ifndef FO_WINDOWS
 # include <signal.h>
 #endif
 
+#ifndef FO_EMSCRIPTEN
 #include "FL/Fl.H"
+#endif
 
 #include "CommandLine.h"
 #include "ConfigFile.h"
@@ -27,6 +31,99 @@ using namespace std;
 
 FOWindow* MainWindow = NULL;
 FOClient* FOEngine = NULL;
+#ifdef FO_EMSCRIPTEN
+
+static const char* ClientFiles[] =
+{
+    "DataFiles.cfg",
+    "DataFilesReloaded.cfg",
+    "data/base.zip",
+    "data/fishing.zip",
+    "data/dynamicEnvironment.zip",
+    "data/car.zip",
+    "data/tdummy.zip",
+    "data/nevada_art.zip",
+    "data/new_critters.zip",
+    "data/gammafix.zip",
+};
+
+static const int ClientFilesCount = sizeof( ClientFiles ) / sizeof( ClientFiles[0] );
+
+static int ClientFileIndex = 0;
+static bool ClientFilesReady = false;
+static bool ClientFilesFailed = false;
+static bool ClientEngineInitialized = false;
+
+static void DownloadNextClientFile();
+
+static void DownloadClientFileSucceeded( const char* file )
+{
+    WriteLogF( _FUNC_, " - Downloaded %s\n", file );
+
+    ClientFileIndex++;
+
+    if( ClientFileIndex >= ClientFilesCount )
+        ClientFilesReady = true;
+    else
+        DownloadNextClientFile();
+}
+
+static void DownloadClientFileFailed( const char* file )
+{
+    WriteLogF( _FUNC_, " - Can't download %s\n", file );
+    ClientFilesFailed = true;
+}
+
+static void DownloadNextClientFile()
+{
+    const char* file = ClientFiles[ClientFileIndex];
+
+    WriteLogF( _FUNC_, " - Downloading %s\n", file );
+
+    emscripten_async_wget(
+        file,
+        file,
+        DownloadClientFileSucceeded,
+        DownloadClientFileFailed
+    );
+}
+
+static void EmscriptenMainLoop( void* )
+{
+    if( ClientFilesFailed )
+    {
+        GameOpt.Quit = true;
+        return;
+    }
+
+    if( !ClientFilesReady )
+        return;
+
+    if( !FOEngine )
+    return;
+
+	if( !ClientEngineInitialized )
+	{
+		printf( "FO WEB: starting FOEngine->Init()\n" );
+
+		if( !FOEngine->Init() )
+		{
+			printf( "FO WEB: FOEngine->Init() FAILED\n" );
+			WriteLog( "FOClassic engine initialization fail.\n" );
+			ClientEngineInitialized = true;
+			GameOpt.Quit = true;
+			return;
+		}
+
+		printf( "FO WEB: FOEngine->Init() OK\n" );
+		ClientEngineInitialized = true;
+	}
+
+	if( !GameOpt.Quit )
+		FOEngine->MainLoop();
+	}
+
+#endif
 
 int main( int argc, char** argv )
 {
@@ -60,7 +157,9 @@ int main( int argc, char** argv )
 
     strftime( buffer, sizeof(buffer), "clientlogs/client_%d-%m-%Y_%H-%M-%S.log", timeinfo );
     std::string str( buffer );
+    #ifndef FO_EMSCRIPTEN
     fl_mkdir( "clientlogs", 0 );
+	#endif
 
     LogToFile( str.c_str() );
     // LogToFile("Client_1:2:3.log");
@@ -166,22 +265,30 @@ int main( int argc, char** argv )
 
 
     // Create engine
-    FOEngine = new FOClient();
-    if( !FOEngine || !FOEngine->Init() )
-    {
-        WriteLog( "FOClassic engine initialization fail.\n" );
-        GameOpt.Quit = true;
-        return -1;
-    }
+	FOEngine = new FOClient();
 
-    // Loop
-    while( !GameOpt.Quit && Fl::check() )
-    {
-        if( !FOEngine->MainLoop() )
-            Thread::Sleep( 100 );
-    }
-    GameOpt.Quit = true;
-
+	#ifdef FO_EMSCRIPTEN
+		DownloadNextClientFile();
+	#else
+		if( !FOEngine || !FOEngine->Init() )
+		{
+			WriteLog( "FOClassic engine initialization fail.\n" );
+			GameOpt.Quit = true;
+			return -1;
+		}
+	#endif
+	
+// Loop
+	#ifdef FO_EMSCRIPTEN
+		emscripten_set_main_loop_arg( EmscriptenMainLoop, NULL, 0, 1 );
+	#else
+		while( !GameOpt.Quit )
+		{
+			if( !FOEngine->MainLoop() )
+				Thread::Sleep( 100 );
+		}
+		GameOpt.Quit = true;
+	#endif
     if( Script::PrepareContext( ClientFunctions.Finish, _FUNC_, "Game" ) )
         Script::RunPrepared();
 

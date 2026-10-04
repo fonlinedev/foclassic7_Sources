@@ -3,7 +3,9 @@
 #include "Assimp/assimp.h"
 #include "Assimp/aiPostProcess.h"
 #ifndef FO_D3D
-# include "il.h"
+# ifndef FO_EMSCRIPTEN
+#  include "il.h"
+# endif
 #endif
 
 #include "3dAnimation.h"
@@ -870,13 +872,20 @@ Texture* GraphicLoader::LoadTexture( Device_ device, const char* texture_name, c
     }
 
     #ifdef FO_D3D
-    // Create texture
-    LPDIRECT3DTEXTURE9 dxtex = NULL;
-    if( !fm.IsLoaded() || FAILED( D3DXCreateTextureFromFileInMemory( device, fm.GetBuf(), fm.GetFsize(), &dxtex ) ) )
-        return NULL;
-    Texture* texture = new Texture();
-    texture->Instance = dxtex;
+		// Create texture
+		LPDIRECT3DTEXTURE9 dxtex = NULL;
+		if( !fm.IsLoaded() || FAILED( D3DXCreateTextureFromFileInMemory( device, fm.GetBuf(), fm.GetFsize(), &dxtex ) ) )
+			return NULL;
+		Texture* texture = new Texture();
+		texture->Instance = dxtex;
     #else
+		Texture* texture = new Texture();
+	# ifdef FO_EMSCRIPTEN
+
+		return NULL;
+
+	# else
+
     // Detect type
     ILenum file_type = ilTypeFromExt( texture_name );
     if( file_type == IL_TYPE_UNKNOWN )
@@ -934,7 +943,9 @@ Texture* GraphicLoader::LoadTexture( Device_ device, const char* texture_name, c
     GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT ) );
     GL( glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT ) );
     GL( glTexImage2D( GL_TEXTURE_2D, 0, 4, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, texture->Data ) );
-    #endif
+
+# endif
+#endif   
     texture->Name = Str::Duplicate( texture_name );
     loadedTextures.push_back( texture );
     return loadedTextures.back();
@@ -1289,6 +1300,7 @@ Effect* GraphicLoader::LoadEffect( Device_ device, const char* effect_name, bool
     {
         bool loaded = false;
         uint version = file_binary.GetBEUInt();
+		#ifndef FO_EMSCRIPTEN
         if( version == SHADER_PROGRAM_BINARY_VERSION )
         {
             GLenum  format = file_binary.GetBEUInt();
@@ -1315,6 +1327,7 @@ Effect* GraphicLoader::LoadEffect( Device_ device, const char* effect_name, bool
                 WriteLogF( _FUNC_, " - Binary shader program<%s> truncated, effect<%s>.\n", binary_fname, fname );
             }
         }
+		#endif
         if( !loaded )
             file_binary.UnloadFile();
     }
@@ -1427,8 +1440,10 @@ Effect* GraphicLoader::LoadEffect( Device_ device, const char* effect_name, bool
             GL( glBindAttribLocation( program, 9, "InBlendIndices" ) );
         }
 
-        if( GLEW_ARB_get_program_binary )
-            GL( glProgramParameteri( program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE ) );
+        #ifndef FO_EMSCRIPTEN
+		if( GLEW_ARB_get_program_binary )
+			GL( glProgramParameteri( program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE ) );
+		#endif
 
         GL( glLinkProgram( program ) );
         GLint linked;
@@ -1446,6 +1461,7 @@ Effect* GraphicLoader::LoadEffect( Device_ device, const char* effect_name, bool
         }
 
         // Save in binary
+		#ifndef FO_EMSCRIPTEN
         if( GLEW_ARB_get_program_binary )
         {
             GLsizei  buf_size;
@@ -1463,6 +1479,7 @@ Effect* GraphicLoader::LoadEffect( Device_ device, const char* effect_name, bool
             if( !file_binary.SaveOutBufToFile( binary_fname, PATH_CACHE ) )
                 WriteLogF( _FUNC_, " - Can't save effect<%s> in binary<%s>.\n", fname, binary_fname );
         }
+		#endif
     }
 
     // Create effect instance
@@ -1754,9 +1771,13 @@ bool GraphicLoader::LoadDefaultEffects( Device_ device )
         effect_handle ## Default = LoadEffect( device, effect_name, use_in_2d, defines ); \
         if( effect_handle ## Default )                                                    \
             effect_handle = new Effect( *effect_handle ## Default );                      \
-        else                                                                              \
-            effect_errors++
+		else                                                                              \
+		{                                                                                 \
+			printf( "FO WEB: failed effect " effect_name "\n" );                         \
+			effect_errors++;                                                              \
+		}
     uint effect_errors = 0;
+	printf( "FO WEB: loading default effects\n" );
     LOAD_EFFECT( Effect::Generic, "2D_Default", true, NULL );
     LOAD_EFFECT( Effect::Critter, "2D_Default", true, NULL );
     LOAD_EFFECT( Effect::Roof, "2D_Default", true, NULL );

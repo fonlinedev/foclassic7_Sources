@@ -98,3 +98,11 @@ FOnline-BraveNewWorld.layout
 FOnline-BraveNewWorld.cbp
 PReloaded/Tools/PerkEditor/PerkEditor/
 PReloaded/Tools/PerkEditor/
+
+
+# CMake build output
+foclassic/build-*/
+
+# Visual Studio local files
+.vs/
+*.vcxproj.user

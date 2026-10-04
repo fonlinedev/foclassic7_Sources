@@ -1,5 +1,6 @@
 #ifndef __CONFIG_TYPES_H__
 #define __CONFIG_TYPES_H__
+#include <stdint.h>
 
 typedef short ogg_int16_t;
 typedef unsigned short ogg_uint16_t;

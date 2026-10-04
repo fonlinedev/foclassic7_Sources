@@ -1741,7 +1741,7 @@ void FOServer::Process_Dialog( Client* cl, bool is_say )
 
 label_ForceDialog:
         // Special links
-        switch( dlg_id )
+        switch( (int)dlg_id )
         {
             case -3:
             case DIALOG_BARTER:

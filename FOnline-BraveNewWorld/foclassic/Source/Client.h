@@ -1,7 +1,8 @@
 #ifndef __CLIENT__
 #define __CLIENT__
+#include "Shared/PlatformSpecific.h"
 
-#ifndef FO_D3D
+#if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
 # include "theoradec.h" // Video
 #endif
 #include "zlib.h"
@@ -336,7 +337,7 @@ public:
 /************************************************************************/
 /* Video                                                                */
 /************************************************************************/
-    #ifndef FO_D3D
+    #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
     struct ShowVideo
     {
         std::string FileName;
@@ -837,7 +838,7 @@ public:
     enum ActiveQuestTab { ALL, ACTIVE, JOBS, COMPLETED, FAILED };
     ActiveQuestTab activeQuestTab;
     Rect           IntWPipQuestTabs, IntWPipQuestTabAll, IntWPipQuestTabActive, IntWPipQuestTabJobs, IntWPipQuestTabCompleted, IntWPipQuestTabFailed;
-    void FOClient::RecalcPipQuestTabRectangles();
+    void RecalcPipQuestTabRectangles();
 
     void IntDraw();
     int  IntLMouseDown();
@@ -931,7 +932,7 @@ public:
 
     void RecalcDlgMainTextLinesReal();
     void RecalcDlgMainTextLinesRect();
-    void FOClient::RecalcDlgAnswerPositions();
+    void RecalcDlgAnswerPositions();
 
     // Barter
     AnyFrames* BarterPMain, * BarterPBOfferDn, * BarterPBTalkDn,

@@ -643,6 +643,11 @@ void RestoreMainDirectory()
 
     // Set executable directory
     SetCurrentDirectory( path );
+	#elif defined(FO_EMSCRIPTEN)
+
+    // Browser:
+    // Emscripten's virtual filesystem is already rooted appropriately.
+    // Nothing to restore here.
     #else
     // Read symlink to executable
     char buf[MAX_FOPATH];
@@ -667,6 +672,11 @@ void ShowMessage( const char* message )
 
     #ifdef FO_WINDOWS
     MessageBox( NULL, message, "FOClassic", MB_OK );
+	#elif defined(FO_EMSCRIPTEN)
+
+    // Browser:
+    // Emscripten's virtual filesystem is already rooted appropriately.
+    // Nothing to restore here.
     #else
     // Todo: Linux
     #endif

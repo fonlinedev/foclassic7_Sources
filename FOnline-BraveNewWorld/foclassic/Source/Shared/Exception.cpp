@@ -503,6 +503,19 @@ void CreateDump( const char* appendix )
     # endif
 }
 
+#elif defined(FO_EMSCRIPTEN)
+
+void CatchExceptions( const char* app_name )
+{
+    if( app_name )
+        Str::Copy( AppName, app_name );
+}
+
+void CreateDump( const char* appendix )
+{
+    Str::Copy( ManualDumpAppendix, appendix );
+}
+
 #else
 
 # include <signal.h>
