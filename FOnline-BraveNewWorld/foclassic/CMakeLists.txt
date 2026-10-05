@@ -196,12 +196,16 @@ add_subdirectory( Docs )
 add_subdirectory( Source )
 
 if( EMSCRIPTEN )
+    add_compile_options( "-g3" )
+
     target_link_options( ClientGL PRIVATE
         "--use-preload-plugins"
         "-sALLOW_MEMORY_GROWTH=1"
+        "-sASSERTIONS=2"
         "-sSTACK_SIZE=1048576"
+        "-g3"
         "--preload-file"
-        "${CMAKE_SOURCE_DIR}/webdata/data@/data"
+        "${CMAKE_SOURCE_DIR}/webdata/data@/data"				
     )
 endif()
 

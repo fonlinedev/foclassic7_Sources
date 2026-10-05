@@ -6,6 +6,11 @@
 # include <FL/Fl_Text_Display.H>
 #endif
 
+#ifdef FO_EMSCRIPTEN
+#include <emscripten/html5.h>
+#include <emscripten/emscripten.h>
+#endif
+
 #include "FileSystem.h"
 #include "Log.h"
 #include "Mutex.h"
@@ -195,7 +200,7 @@ void WriteLogInternal( bool prefixes, const char* func, const char* frmt, va_lis
     {
         *LogBufferStr += str;
     }
-    if( ToDebugOutput )
+        if( ToDebugOutput )
     {
         #ifdef FO_WINDOWS
         OutputDebugString( str );
@@ -203,6 +208,23 @@ void WriteLogInternal( bool prefixes, const char* func, const char* frmt, va_lis
         printf( "%s", str );
         #endif
     }
+
+	#ifdef FO_EMSCRIPTEN
+    EM_ASM({
+        const s = UTF8ToString($0);
+        /*if (
+            s.includes("Authentication") ||
+            s.includes("Change map") ||
+            s.includes("Load map") ||
+            s.includes("Local map") ||
+            s.includes("Chosen") ||
+            s.includes("Quests") ||
+            s.includes("Disconnect") ||
+            s.includes("NetInput returned")
+        )*/
+			console.log(s);
+    }, str);
+	#endif
 }
 
 void LogWithTime( bool enable )

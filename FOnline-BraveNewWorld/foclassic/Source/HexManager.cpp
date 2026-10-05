@@ -749,10 +749,16 @@ void HexManager::SetRainAnimation( const char* fall_anim_name, const char* drop_
     if( drop_anim_name )
         picRainDropName = drop_anim_name;
 
+#ifdef FO_EMSCRIPTEN
+    picRainFall = SpriteManager::DummyAnimation;
+    picRainDrop = SpriteManager::DummyAnimation;
+    return;
+#else
     SAFEDEL( picRainFall );
     SAFEDEL( picRainDrop );
     picRainFall = SprMngr.LoadAnimation( picRainFallName.c_str(), PATH_DATA, ANIM_USE_DUMMY );
     picRainDrop = SprMngr.LoadAnimation( picRainDropName.c_str(), PATH_DATA, ANIM_USE_DUMMY );
+#endif
 }
 
 int HexManager::ChosenDistanceHex( uint16 hexX, uint16 hexY )

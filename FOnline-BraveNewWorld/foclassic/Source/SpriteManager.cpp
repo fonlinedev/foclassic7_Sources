@@ -47,12 +47,12 @@ EM_JS(int, FO_GetPreloadedImageSize, (const char* fname, int* out_w, int* out_h)
         ? Browser.preloadedImages
         : null;
 
-    console.log("[FO FONT DEBUG] requested:", name);
-    console.log("[FO FONT DEBUG] Browser exists:", typeof Browser !== 'undefined');
-    console.log("[FO FONT DEBUG] preloadedImages exists:", !!images);
+    //console.log("[FO FONT DEBUG] requested:", name);
+    //console.log("[FO FONT DEBUG] Browser exists:", typeof Browser !== 'undefined');
+    //console.log("[FO FONT DEBUG] preloadedImages exists:", !!images);
 
-    if (images)
-        console.log("[FO FONT DEBUG] image keys:", Object.keys(images));
+    //if (images)
+    //    console.log("[FO FONT DEBUG] image keys:", Object.keys(images));
 
     if (!images)
         return 0;
@@ -527,6 +527,20 @@ bool SpriteManager::Init( SpriteMngrParams& params )
         }
     }
 
+	#ifdef FO_EMSCRIPTEN
+	EM_ASM({
+		var c = document.getElementById('canvas');
+		if (c) {
+			c.style.background = 'red';
+			c.width = 1024;
+			c.height = 768;
+			console.log("FO CANVAS FOUND", c.width, c.height);
+		} else {
+			console.log("FO CANVAS MISSING");
+		}
+	});
+	#endif
+
     WriteLog( "Sprite manager initialization complete.\n" );
     return true;
 }
@@ -829,8 +843,15 @@ bool SpriteManager::BeginScene( uint clear_color )
         D3D_HR( d3dDevice->Clear( 0, NULL, D3DCLEAR_TARGET, clear_color, 1.0f, 0 ) );
     D3D_HR( d3dDevice->BeginScene() );
     #else
-    if( clear_color )
-        ClearCurrentRenderTarget( clear_color );
+		#ifdef FO_EMSCRIPTEN
+		GL( glBindFramebuffer( GL_FRAMEBUFFER, 0 ) );
+		GL( glViewport( 0, 0, modeWidth, modeHeight ) );
+		GL( glClearColor( 1.0f, 0.0f, 0.0f, 1.0f ) );
+		GL( glClear( GL_COLOR_BUFFER_BIT ) );
+		#else
+		if( clear_color )
+			ClearCurrentRenderTarget( clear_color );
+		#endif
     #endif
 
     Animation3d::BeginScene();
@@ -841,29 +862,84 @@ bool SpriteManager::BeginScene( uint clear_color )
 void SpriteManager::EndScene()
 {
     Flush();
-    #ifdef FO_D3D
-    d3dDevice->EndScene();
-    d3dDevice->Present( NULL, NULL, NULL, NULL );
-    #else
-    PopRenderTarget();
-    DrawRenderTarget( rtMain, false );
-    PushRenderTarget( rtMain );
-    # ifdef FO_WINDOWS
-    SwapBuffers( deviceContext );
-    # else
-    #ifndef FO_EMSCRIPTEN
-		glXSwapBuffers( fl_display, fl_window );
+
+	#ifdef FO_D3D
+		d3dDevice->EndScene();
+		d3dDevice->Present(NULL, NULL, NULL, NULL);
+	#else
+
+	#ifdef FO_EMSCRIPTEN
+		if( rtStack.empty() )
+		{
+			GL( glBindFramebuffer( GL_FRAMEBUFFER, 0 ) );
+			GL( glViewport( 0, 0, modeWidth, modeHeight ) );
+		}
+		else
 	#endif
-    # endif
-    if( GameOpt.OpenGLDebug && glGetError() != GL_NO_ERROR )
-    {
-        WriteLogF( _FUNC_, " - Unknown place of OpenGL error.\n" );
-        ExitProcess( 0 );
-    }
+		{
+			PopRenderTarget();
+		}
+
+		DrawRenderTarget( rtMain, false );
+
+	#ifdef FO_EMSCRIPTEN
+		GL( glBindFramebuffer( GL_FRAMEBUFFER, 0 ) );
+	#endif
+
+		PushRenderTarget( rtMain );
+
+	#ifdef FO_WINDOWS
+		SwapBuffers(deviceContext);
+	#else
+	#ifndef FO_EMSCRIPTEN
+		glXSwapBuffers(fl_display, fl_window);
+	#endif
+	#endif
+
+		if(GameOpt.OpenGLDebug && glGetError() != GL_NO_ERROR)
+		{
+			WriteLogF( _FUNC_, " - Unknown place of OpenGL error.\n" );
+			ExitProcess( 0 );
+		}
+
+	#endif
+
+    sceneBeginned = false;
+}
+/* original
+void SpriteManager::EndScene()
+{
+	#ifdef FO_EMSCRIPTEN
+	EM_ASM({
+		console.log("FO EndScene: stack check");
+	});
+	#endif
+	
+    Flush();
+	
+    #ifdef FO_D3D
+		d3dDevice->EndScene();
+		d3dDevice->Present( NULL, NULL, NULL, NULL );
+    #else
+		PopRenderTarget();
+		DrawRenderTarget( rtMain, false );
+		PushRenderTarget( rtMain );
+		# ifdef FO_WINDOWS
+			SwapBuffers( deviceContext );
+		# else
+			#ifndef FO_EMSCRIPTEN
+				glXSwapBuffers( fl_display, fl_window );
+			#endif
+		# endif
+		if( GameOpt.OpenGLDebug && glGetError() != GL_NO_ERROR )
+		{
+			WriteLogF( _FUNC_, " - Unknown place of OpenGL error.\n" );
+			ExitProcess( 0 );
+		}
     #endif
     sceneBeginned = false;
 }
-
+*/
 bool SpriteManager::Restore()
 {
     if( !isInit )
@@ -1260,6 +1336,17 @@ void SpriteManager::PushRenderTarget( RenderTarget& rt )
 
 void SpriteManager::PopRenderTarget()
 {
+	
+	#ifdef FO_EMSCRIPTEN
+	if( rtStack.empty() )
+	{
+		EM_ASM({
+			console.error("FO ERROR: PopRenderTarget on EMPTY stack");
+		});
+		return;
+	}
+	#endif
+
     bool redundant = (rtStack.size() > 2 && rtStack.back()->Id == rtStack[rtStack.size() - 2]->Id);
     rtStack.pop_back();
     if( !redundant )

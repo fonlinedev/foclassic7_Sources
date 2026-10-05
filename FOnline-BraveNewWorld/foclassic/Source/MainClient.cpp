@@ -34,17 +34,8 @@ FOClient* FOEngine = NULL;
 #ifdef FO_EMSCRIPTEN
 
 static const char* ClientFiles[] =
-{
-    "DataFiles.cfg",
-    "DataFilesReloaded.cfg",
-    "data/base.zip",
-    "data/fishing.zip",
-    "data/dynamicEnvironment.zip",
-    "data/car.zip",
-    "data/tdummy.zip",
-    "data/nevada_art.zip",
-    "data/new_critters.zip",
-    "data/gammafix.zip",
+{    
+	"fallout.dat"
 };
 
 static const int ClientFilesCount = sizeof( ClientFiles ) / sizeof( ClientFiles[0] );

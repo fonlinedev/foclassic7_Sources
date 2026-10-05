@@ -4,6 +4,11 @@
 #include "FL/x.H"
 #endif
 
+#ifdef FO_EMSCRIPTEN
+#include <emscripten/html5.h>
+#include <emscripten/emscripten.h>
+#endif
+
 #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
 # include "il.h"
 #endif
@@ -3388,6 +3393,12 @@ void FOClient::IntMouseMove()
 
 void FOClient::LogDraw()
 {
+	
+	#ifdef FO_EMSCRIPTEN
+    EM_ASM({
+        console.log("[FO LOGIN] LogDraw ENTER");
+    });
+	#endif
     SprMngr.DrawSprite( Singleplayer ? LogPSingleplayerMain : LogPMain, LogX, LogY );
 
     if( IfaceHold == IFACE_LOG_PLAY__NEWGAME )
@@ -3426,6 +3437,11 @@ void FOClient::LogDraw()
             SprMngr.DrawStr( LogWPass, mask, FONT_FLAG_CENTERX | FONT_FLAG_CENTERY | FONT_FLAG_NOBREAK, LogFocus == IFACE_LOG_PASS ? COLOR_TEXT_LGREEN : COLOR_TEXT_DGREEN, loginFont );
         }
     }
+	#ifdef FO_EMSCRIPTEN
+    EM_ASM({
+        console.log("[FO LOGIN] LogDraw EXIT");
+    });
+	#endif
 }
 
 void FOClient::LogKeyDown( uint8 dik, const char* dik_text )

@@ -4,6 +4,12 @@
 #include "FL/Fl.H"
 #endif
 
+#ifdef FO_EMSCRIPTEN
+#include <emscripten/html5.h>
+#include <emscripten/emscripten.h>
+#endif
+
+
 #ifndef FO_EMSCRIPTEN
 #include "FL/x.H"
 #else
@@ -289,6 +295,9 @@ bool FOClient::Init()
     Str::Append( cache_fname, ".cache" );
 
     bool refresh_cache = (!Singleplayer && !CommandLine->IsOption( "DefCache" ) && !Crypt.IsCacheTable( cache_fname ) );
+	#ifdef FO_EMSCRIPTEN
+		refresh_cache = true;
+	#endif
 
     if( !Singleplayer && !CommandLine->IsOption( "DefCache" ) && !Crypt.SetCacheTable( cache_fname ) )
     {
@@ -460,9 +469,14 @@ bool FOClient::Init()
     if( !AppendIfaceIni( NULL ) )
         return false;
 
-    // Scripts
-    if( !ReloadScripts( true ) )
-        refresh_cache = true;
+    // Scripts    
+	#ifdef FO_EMSCRIPTEN
+		// Client scripts are loaded when FOINTERNAL.MSG arrives from the server.
+	#else
+		if( !ReloadScripts( true ) )
+			refresh_cache = true;
+	#endif
+
 
     // Load interface
     int res = InitIface();
@@ -554,15 +568,22 @@ bool FOClient::Init()
 
     // Start game
     // Check cache
-    if( refresh_cache )
-    {
-        InitNetReason = INIT_NET_REASON_CACHE;
-    }
-    // Begin game
-    else if( !Singleplayer && CommandLine->IsOption( "Start" ) )
-    {
-        LogTryConnect();
-    }
+    #ifdef FO_EMSCRIPTEN
+	// Web proof: start directly on the login screen.
+		InitNetReason = INIT_NET_REASON_NONE;
+		ShowMainScreen( CLIENT_MAIN_SCREEN_LOGIN );
+	#else
+	// Check cache
+		if( refresh_cache )
+		{
+			InitNetReason = INIT_NET_REASON_CACHE;
+		}
+	// Begin game
+		else if( !Singleplayer && CommandLine->IsOption( "Start" ) )
+		{
+			LogTryConnect();
+		}
+	#endif
     #if !defined(FO_D3D) && !defined(FO_EMSCRIPTEN)
     // Intro
     else if( !CommandLine->IsOption( "SkipIntro" ) )
@@ -779,8 +800,24 @@ void FOClient::LookBordersDraw()
         SprMngr.DrawPoints( ShootBorders, DRAW_PRIMITIVE_LINESTRIP, &GameOpt.SpritesZoom );
 }
 
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Web_MainLoopHeartbeat, (int connected, int screen), {
+    console.log("[FO MAIN LOOP] connected:", connected, "screen:", screen);
+});
+#endif
+
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_MainLoopPoint, (int point), {
+    console.log("[FO MAINLOOP POINT]", point);
+});
+#endif
+
 int FOClient::MainLoop()
 {
+	#ifdef FO_EMSCRIPTEN
+    // FO_MainLoopPoint(1);
+	#endif
+
     // Fixed FPS
     double start_loop = Timer::AccurateTick();
 
@@ -797,7 +834,9 @@ int FOClient::MainLoop()
     {
         call_counter++;
     }
-
+	#ifdef FO_EMSCRIPTEN
+		//FO_MainLoopPoint(2);
+	#endif
     // Singleplayer data synchronization
     if( Singleplayer )
     {
@@ -861,6 +900,18 @@ int FOClient::MainLoop()
     // Parse Net
     if( IsConnected )
         ParseSocket();
+	
+	#ifdef FO_EMSCRIPTEN
+		//FO_MainLoopPoint(3);
+	#endif
+	#ifdef FO_EMSCRIPTEN
+	static uint web_heartbeat_tick = 0;
+	if( Timer::FastTick() >= web_heartbeat_tick )
+	{
+		FO_Web_MainLoopHeartbeat( IsConnected ? 1 : 0, GetMainScreen() );
+		web_heartbeat_tick = Timer::FastTick() + 1000;
+	}
+	#endif
 
     // Exit in Login screen if net disconnect
     if( !IsConnected && !IsMainScreen( CLIENT_MAIN_SCREEN_LOGIN ) && !IsMainScreen( CLIENT_MAIN_SCREEN_REGISTRATION ) && !IsMainScreen( CLIENT_MAIN_SCREEN_CREDITS ) )
@@ -873,10 +924,17 @@ int FOClient::MainLoop()
     ParseMouse();
 
     // CHECK_MULTIPLY_WINDOWS1;
+	#ifdef FO_EMSCRIPTEN
+		//FO_MainLoopPoint(4);
+	#endif
 
     // Process
     SoundProcess();
     AnimProcess();
+	
+	#ifdef FO_EMSCRIPTEN
+    //FO_MainLoopPoint(5);
+	#endif
 
     // Game time
     uint16 full_second = GameOpt.FullSecond;
@@ -924,6 +982,9 @@ int FOClient::MainLoop()
         if( Script::PrepareContext( ClientFunctions.Loop, _FUNC_, "Game" ) && Script::RunPrepared() )
             wait_tick = Script::GetReturnedUInt();
         next_call = Timer::FastTick() + wait_tick;
+		#ifdef FO_EMSCRIPTEN
+			//FO_MainLoopPoint(6);
+		#endif
     }
     Script::ScriptGarbager();
 
@@ -945,11 +1006,16 @@ int FOClient::MainLoop()
     // CHECK_MULTIPLY_WINDOWS3;
 
     // Render
-    if( !SprMngr.BeginScene( COLOR_XRGB( 0, 0, 0 ) ) )
-        return 0;
-
+	#ifdef FO_EMSCRIPTEN
+	if( !SprMngr.BeginScene( COLOR_XRGB( 255, 0, 0 ) ) )
+		return 0;
+	#else
+	if( !SprMngr.BeginScene( COLOR_XRGB( 0, 0, 0 ) ) )
+		return 0;
+	#endif
+    
     ProcessScreenEffectQuake();
-
+	
     DrawIfaceLayer( 1 );
 
     if( GetMainScreen() == CLIENT_MAIN_SCREEN_GAME && HexMngr.IsMapLoaded() )
@@ -975,6 +1041,9 @@ int FOClient::MainLoop()
     CurDraw();
 
     DrawIfaceLayer( 4 );
+	#ifdef FO_EMSCRIPTEN
+	//FO_MainLoopPoint( 7 );
+	#endif
 
     SprMngr.Flush();
     ProcessScreenEffectFading();
@@ -982,7 +1051,9 @@ int FOClient::MainLoop()
     // CHECK_MULTIPLY_WINDOWS5;
 
     SprMngr.EndScene();
-
+	
+    // Fixed FPS
+    #ifndef FO_EMSCRIPTEN
     // Fixed FPS
     if( !GameOpt.VSync && GameOpt.FixedFPS )
     {
@@ -1003,6 +1074,11 @@ int FOClient::MainLoop()
             Thread::Sleep( -GameOpt.FixedFPS );
         }
     }
+	#endif
+	
+	#ifdef FO_EMSCRIPTEN
+    //FO_MainLoopPoint(99);
+	#endif
 
     return 1;
 }
@@ -3073,11 +3149,20 @@ void FOClient::ParseSocket()
 {
     if( Sock == INVALID_SOCKET )
         return;
+	
+    int net_result = NetInput( true );
 
-    if( NetInput( true ) < 0 )
-    {
-        IsConnected = false;
-    }
+	#ifdef FO_EMSCRIPTEN
+		if( net_result < 0 )
+			EM_ASM({
+				console.error("[FO NET] NetInput returned:", $0);
+			}, net_result);
+	#endif
+
+	if( net_result < 0 )
+	{
+		IsConnected = false;
+	}
     else
     {
         NetProcess();
@@ -3169,6 +3254,12 @@ int FOClient::NetInput( bool unpack )
     if( WSARecv( Sock, &buf, 1, &len, &flags, NULL, NULL ) == SOCKET_ERROR )
     #else
     int len = recv( Sock, ComBuf, ComLen, 0 );
+
+	#ifdef FO_EMSCRIPTEN
+		EM_ASM({
+			// console.log("[FO NET] recv returned:", $0);
+		}, len);
+	#endif
     if( len < 0 )
     #endif
     {
@@ -3257,6 +3348,30 @@ int FOClient::NetInput( bool unpack )
     return Bin.GetEndPos() - old_pos;
 }
 
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_DebugMsg, (int msg), {
+    const u = msg >>> 0;
+    //console.log("[FO NET DEBUG] raw:", u, "hex:", "0x" + u.toString(16).padStart(8, "0"));
+});
+#endif
+
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_DebugProcessEnd, (), {
+    //console.log("[FO NET DEBUG] NetProcess SWITCH END");
+});
+#endif
+
+
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_ItemProtoDispatchBegin, (), {
+    //console.log("[FO NET DEBUG] ITEM_PROTOS DISPATCH BEGIN");
+});
+
+EM_JS(void, FO_Net_ItemProtoDispatchEnd, (), {
+    //console.log("[FO NET DEBUG] ITEM_PROTOS DISPATCH END");
+});
+#endif
+
 void FOClient::NetProcess()
 {
     if( Bin.NeedProcessRaw() )
@@ -3295,7 +3410,9 @@ void FOClient::NetProcess()
                 WriteLog( "Unknown raw data<0x%X>\n", data );
                 break;
         }
-
+		#ifdef FO_EMSCRIPTEN
+        //FO_Net_DebugProcessEnd();
+		#endif
         return;
     }
 
@@ -3303,6 +3420,10 @@ void FOClient::NetProcess()
     {
         uint msg = 0;
         Bin >> msg;
+		
+		#ifdef FO_EMSCRIPTEN
+        //FO_Net_DebugMsg( (int)((msg >> 8) & 0xFF) );
+		#endif
 
         if( GameOpt.DebugNet )
         {
@@ -3544,8 +3665,14 @@ void FOClient::NetProcess()
                 Net_OnMsgData();
                 break;
             case NETMSG_ITEM_PROTOS:
-                Net_OnProtoItemData();
-                break;
+				#ifdef FO_EMSCRIPTEN
+					FO_Net_ItemProtoDispatchBegin();
+				#endif
+				Net_OnProtoItemData();
+				#ifdef FO_EMSCRIPTEN
+					FO_Net_ItemProtoDispatchEnd();
+				#endif
+				break;
 
             default:
                 if( GameOpt.DebugNet )
@@ -7200,21 +7327,60 @@ void FOClient::Net_OnCheckUID3()
     // CHECK_MULTIPLY_WINDOWS7;
 }
 
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_OnMsgData_Begin, (), {
+    //console.log("[FO NET DEBUG] Net_OnMsgData BEGIN");
+});
+#endif
+
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_OnMsgData_End, (), {
+    //console.log("[FO NET DEBUG] Net_OnMsgData END");
+});
+#endif
+
 void FOClient::Net_OnMsgData()
 {
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_OnMsgData_Begin();
+    #endif
+
     uint    msg_len;
     uint    lang;
     uint16  num_msg;
     uint    data_hash;
     CharVec data;
+
     Bin >> msg_len;
     Bin >> lang;
     Bin >> num_msg;
     Bin >> data_hash;
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        /*console.log("[FO NET DEBUG] MSG_DATA HEADER msg_len=" + $0 +
+                    " lang=" + $1 +
+                    " num_msg=" + $2 +
+                    " data_hash=0x" + ($3 >>> 0).toString(16));*/
+    }, msg_len, lang, num_msg, data_hash);
+    #endif
+
     data.resize( msg_len - (sizeof(uint) + sizeof(msg_len) + sizeof(lang) + sizeof(num_msg) + sizeof(data_hash) ) );
     Bin.Pop( (char*)&data[0], (uint)data.size() );
 
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        //console.log("[FO NET DEBUG] MSG_DATA AFTER_READ size=" + $0);
+    }, (uint)data.size());
+    #endif
+
     CHECK_IN_BUFF_ERROR;
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        //console.log("[FO NET DEBUG] MSG_DATA AFTER_CHECK");
+    });
+    #endif
 
     if( lang != CurLang.Name )
     {
@@ -7228,45 +7394,91 @@ void FOClient::Net_OnMsgData()
         return;
     }
 
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        //console.log("[FO NET DEBUG] MSG_DATA BEFORE_CRC");
+    });
+    #endif
+
     if( data_hash != Crypt.Crc32( (uint8*)&data[0], (uint)data.size() ) )
     {
         WriteLogF( _FUNC_, " - Invalid hash<%s>.\n", TextMsgFileName[num_msg] );
         return;
     }
 
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+      //  console.log("[FO NET DEBUG] MSG_DATA AFTER_CRC");
+    });
+    #endif
+	
     if( CurLang.Msg[num_msg].LoadMsgStream( data ) < 0 )
     {
         WriteLogF( _FUNC_, " - Unable to load<%s> from stream.\n", TextMsgFileName[num_msg] );
         return;
     }
+	
+	#ifdef FO_EMSCRIPTEN
+	EM_ASM_({
+		//console.log("[FO NET DEBUG] MSG_DATA AFTER_LOADMSG");
+	});
+	#endif
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+       //console.log("[FO NET DEBUG] MSG_DATA BEFORE_SAVEMSG");
+    });
+    #endif
 
     CurLang.Msg[num_msg].SaveMsgFile( Str::FormatBuf( "%s\\%s", CurLang.NameStr, TextMsgFileName[num_msg] ), PATH_TEXTS );
+	
+	#ifdef FO_EMSCRIPTEN
+	EM_ASM_({
+		//console.log("[FO NET DEBUG] MSG_DATA AFTER_SAVEMSG");
+	});
+	#endif
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        //console.log("[FO NET DEBUG] MSG_DATA BEFORE_HASH");
+    });
+    #endif
+
     CurLang.Msg[num_msg].CalculateHash();
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+        //console.log("[FO NET DEBUG] MSG_DATA AFTER_HASH");
+    });
+    #endif
+	
+	#ifdef FO_EMSCRIPTEN
+	EM_ASM_({
+		//console.log("[FO NET DEBUG] MSG_DATA BEFORE_SWITCH num_msg=" + $0);
+	}, num_msg);
+	#endif
 
     switch( num_msg )
     {
         case TEXTMSG_ITEM:
             MrFixit.GenerateNames( *MsgGame, *MsgItem );
             break;
+
         case TEXTMSG_CRAFT:
-            // Reload crafts
             MrFixit.Finish();
             MrFixit.LoadCrafts( *MsgCraft );
             MrFixit.GenerateNames( *MsgGame, *MsgItem );
             break;
-        case TEXTMSG_INTERNAL:
-            // Reload critter types
-            CritType::InitFromMsg( MsgInternal );
-            ResMngr.FreeResources( RES_CRITTERS );   // Free animations, maybe critters table is changed
 
-            // Reload scripts
+        case TEXTMSG_INTERNAL:
+            CritType::InitFromMsg( MsgInternal );
+            ResMngr.FreeResources( RES_CRITTERS );
+
             if( !ReloadScripts() )
                 IsConnected = false;
 
-            // Names
             ConstantsManager::Initialize( PATH_DATA );
 
-            // Reload interface
             if( int res = InitIface() )
             {
                 WriteLog( "Init interface fail, error<%d>.\n", res );
@@ -7274,10 +7486,36 @@ void FOClient::Net_OnMsgData()
                 IsConnected = false;
             }
             break;
+
         default:
             break;
     }
+
+    #ifdef FO_EMSCRIPTEN
+    EM_ASM_({
+      //  console.log("[FO NET DEBUG] MSG_DATA AFTER_SWITCH");
+    });
+
+    FO_Net_OnMsgData_End();
+    #endif
 }
+
+#ifdef FO_EMSCRIPTEN
+EM_JS(void, FO_Net_ProtoDebug, (const char* stage, int type, int msg_len, int count, int data_hash, int calc_hash, int bytes), {
+    const u = (v) => v >>> 0;
+
+    /*console.log(
+        "[FO PROTO DEBUG]",
+        UTF8ToString(stage),
+        "type:", u(type),
+        "msg_len:", u(msg_len),
+        "count:", u(count),
+        "bytes:", u(bytes),
+        "data_hash:", "0x" + u(data_hash).toString(16).padStart(8, "0"),
+        "calc_hash:", "0x" + u(calc_hash).toString(16).padStart(8, "0")
+    );*/
+});
+#endif
 
 void FOClient::Net_OnProtoItemData()
 {
@@ -7285,40 +7523,180 @@ void FOClient::Net_OnProtoItemData()
     uint8        type;
     uint         data_hash;
     ProtoItemVec data;
+
     Bin >> msg_len;
     Bin >> type;
     Bin >> data_hash;
-    data.resize( (msg_len - sizeof(uint) - sizeof(msg_len) - sizeof(type) - sizeof(data_hash) ) / sizeof(ProtoItem) );
-    Bin.Pop( (char*)&data[0], (uint)data.size() * sizeof(ProtoItem) );
+
+    uint payload_bytes = 0;
+    uint proto_count = 0;
+
+    if( msg_len >= sizeof(uint) + sizeof(msg_len) + sizeof(type) + sizeof(data_hash) )
+    {
+        payload_bytes =
+            msg_len -
+            sizeof(uint) -
+            sizeof(msg_len) -
+            sizeof(type) -
+            sizeof(data_hash);
+
+        proto_count = payload_bytes / sizeof(ProtoItem);
+    }
+
+  
+    if( msg_len < sizeof(uint) + sizeof(msg_len) + sizeof(type) + sizeof(data_hash) ||
+        payload_bytes % sizeof(ProtoItem) != 0 )
+    {
+        WriteLogF(
+            _FUNC_,
+            " - Invalid proto message length. msg_len<%u> payload<%u> ProtoItem size<%u>.\n",
+            msg_len,
+            payload_bytes,
+            (uint)sizeof(ProtoItem)
+        );
+        return;
+    }
+
+    data.resize( proto_count );
+
+    if( !data.empty() )
+        Bin.Pop(
+            (char*)&data[0],
+            payload_bytes
+        );
+
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "DATA_READ",
+        (int)type,
+        (int)msg_len,
+        (int)data.size(),
+        (int)data_hash,
+        0,
+        (int)payload_bytes
+    );
+    #endif
 
     CHECK_IN_BUFF_ERROR;
 
-    if( data_hash != Crypt.Crc32( (uint8*)&data[0], (uint)data.size() * sizeof(ProtoItem) ) )
+    uint calc_hash = data.empty()
+        ? Crypt.Crc32( NULL, 0 )
+        : Crypt.Crc32(
+            (uint8*)&data[0],
+            payload_bytes
+        );
+
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "CRC",
+        (int)type,
+        (int)msg_len,
+        (int)data.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)payload_bytes
+    );
+    #endif
+
+    if( data_hash != calc_hash )
     {
         WriteLogF( _FUNC_, " - Hash error.\n" );
         return;
     }
 
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "BEFORE_PARSE",
+        (int)type,
+        (int)msg_len,
+        (int)data.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)payload_bytes
+    );
+    #endif
+
     ItemMngr.ClearProtos( type );
     ItemMngr.ParseProtos( data );
 
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "AFTER_PARSE",
+        (int)type,
+        (int)msg_len,
+        (int)data.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)payload_bytes
+    );
+    #endif
+
     ProtoItemVec proto_items;
+
     ItemMngr.GetCopyAllProtos( proto_items );
-    uint         len = (uint)proto_items.size() * sizeof(ProtoItem);
-    uint8*       proto_data = Crypt.Compress( (uint8*)&proto_items[0], len );
+
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "AFTER_COPY",
+        (int)type,
+        (int)msg_len,
+        (int)proto_items.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)payload_bytes
+    );
+    #endif
+
+    uint len = (uint)proto_items.size() * sizeof(ProtoItem);
+
+    uint8* proto_data = Crypt.Compress(
+        proto_items.empty() ? NULL : (uint8*)&proto_items[0],
+        len
+    );
+
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "AFTER_COMPRESS",
+        (int)type,
+        (int)msg_len,
+        (int)proto_items.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)len
+    );
+    #endif
+
     if( !proto_data )
     {
         WriteLogF( _FUNC_, " - Compression fail.\n" );
         return;
     }
+
     Crypt.SetCache( "item_protos", proto_data, len );
     delete[] proto_data;
 
     uint count = (uint)proto_items.size();
-    Crypt.SetCache( "item_protos_count", (uint8*)&count, sizeof(count) );
+
+    Crypt.SetCache(
+        "item_protos_count",
+        (uint8*)&count,
+        sizeof(count)
+    );
 
     // Refresh craft names
     MrFixit.GenerateNames( *MsgGame, *MsgItem );
+
+    #ifdef FO_EMSCRIPTEN
+    FO_Net_ProtoDebug(
+        "END",
+        (int)type,
+        (int)msg_len,
+        (int)proto_items.size(),
+        (int)data_hash,
+        (int)calc_hash,
+        (int)len
+    );
+    #endif
 }
 
 void FOClient::Net_OnQuest( bool many )
@@ -10154,6 +10532,7 @@ void FOClient::AnimFree( int res_type )
 
 bool FOClient::ReloadScripts( bool from_init /* = false */ )
 {
+	
     WriteLog( "Load scripts...\n" );
 
     FOMsg& msg_script = CurLang.Msg[TEXTMSG_INTERNAL];
