@@ -4592,28 +4592,12 @@ void FOClient::OnText( const char* str, uint crid, int how_say, uint16 intellect
     if( how_say >= SAY_ENCOUNTER_ANY && how_say <= SAY_ENCOUNTER_TB && IsMainScreen( CLIENT_MAIN_SCREEN_WORLDMAP ) )
     {
         ShowScreen( CLIENT_SCREEN_DIALOGBOX );
-        if( how_say == SAY_ENCOUNTER_ANY )
-        {
-            DlgboxType = DIALOGBOX_ENCOUNTER_ANY;
-            DlgboxButtonText[0] = MsgGame->GetStr( STR_DIALOGBOX_ENCOUNTER_RT );
-            DlgboxButtonText[1] = MsgGame->GetStr( STR_DIALOGBOX_ENCOUNTER_TB );
-            DlgboxButtonText[2] = MsgGame->GetStr( STR_DIALOGBOX_CANCEL );
-            DlgboxButtonsCount = 3;
-        }
-        else if( how_say == SAY_ENCOUNTER_RT )
-        {
-            DlgboxType = DIALOGBOX_ENCOUNTER_RT;
-            DlgboxButtonText[0] = MsgGame->GetStr( STR_DIALOGBOX_ENCOUNTER_RT );
-            DlgboxButtonText[1] = MsgGame->GetStr( STR_DIALOGBOX_CANCEL );
-            DlgboxButtonsCount = 2;
-        }
-        else
-        {
-            DlgboxType = DIALOGBOX_ENCOUNTER_TB;
-            DlgboxButtonText[0] = MsgGame->GetStr( STR_DIALOGBOX_ENCOUNTER_TB );
-            DlgboxButtonText[1] = MsgGame->GetStr( STR_DIALOGBOX_CANCEL );
-            DlgboxButtonsCount = 2;
-        }
+        
+        DlgboxType = DIALOGBOX_ENCOUNTER_TB;
+        DlgboxButtonText[0] = MsgGame->GetStr( STR_DIALOGBOX_ENCOUNTER_TB );
+        DlgboxButtonText[1] = MsgGame->GetStr( STR_DIALOGBOX_CANCEL );
+        DlgboxButtonsCount = 2;
+    
         DlgboxWait = Timer::GameTick() + GM_ANSWER_WAIT_TIME;
         Str::Copy( DlgboxText, fstr );
     }
