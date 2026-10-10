@@ -1,6 +1,9 @@
 #include "Core.h"
 
 #include <stdarg.h>
+#ifdef FOCLASSIC_HEADLESS
+# include <stdio.h>
+#endif
 
 #if defined (FOCLASSIC_SERVER) && !defined (SERVER_DAEMON)
 # include <FL/Fl_Text_Display.H>
@@ -173,6 +176,12 @@ void WriteLogInternal( bool prefixes, const char* func, const char* frmt, va_lis
     size_t len = Str::Length( str );
     vsnprintf( &str[len], MAX_LOGTEXT - len, frmt, list );
     str[MAX_LOGTEXT - 1] = 0;
+
+    #ifdef FOCLASSIC_HEADLESS
+    // A console-subsystem executable can stream logs to stdout for Wine/systemd capture.
+    fputs( str, stdout );
+    fflush( stdout );
+    #endif
 
     if( LogFileHandle )
     {

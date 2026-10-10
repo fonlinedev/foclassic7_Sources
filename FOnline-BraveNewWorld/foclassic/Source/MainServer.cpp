@@ -178,7 +178,8 @@ int main( int argc, char** argv )
         # endif
     }
 
-    // GUI
+    // GUI (disabled in the dedicated headless build).
+    #ifndef FOCLASSIC_HEADLESS
     if( !Singleplayer || CommandLine->IsOption( "ShowUI" ) )
     {
         Fl::lock();         // Begin GUI multi threading
@@ -186,6 +187,11 @@ int main( int argc, char** argv )
         LogToFile( NULL );
         LogToBuffer( true );
     }
+    #else
+    // Keep logs available both in the terminal and in a persistent file.
+    LogToFile( "./FOnlineServer.log" );
+    LogToBuffer( false );
+    #endif
 
     WriteLog( "FOClassic server (%s)\n", FOCLASSIC_VERSION_LOGSTRING );
 
@@ -230,8 +236,12 @@ int main( int argc, char** argv )
             WriteLog( "Command line<%s>.\n", cmdline.c_str() );
     }
 
-    // Autostart
+    // Autostart. A headless server has no GUI start button, so start automatically.
+    #ifdef FOCLASSIC_HEADLESS
+    if( true )
+    #else
     if( Singleplayer || CommandLine->IsOption( "Start" ) )
+    #endif
     {
         if( GuiWindow )
         {

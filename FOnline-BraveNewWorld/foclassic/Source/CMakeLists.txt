@@ -356,6 +356,20 @@ target_sources( Server
 target_compile_definitions( Server PRIVATE FOCLASSIC_SERVER SCRIPT_MULTITHREADING )
 target_include_directories( Server PRIVATE ${FOCLASSIC_INCLUDES} )
 target_link_libraries( Server ${SERVER_LIBS} )
+
+# Console-subsystem server build. Keep the original GUI Server target unchanged.
+if( WIN32 )
+    get_target_property( SERVER_SOURCE_FILES Server SOURCES )
+    add_executable( ServerHeadless "" )
+    target_sources( ServerHeadless PRIVATE ${SERVER_SOURCE_FILES} )
+    target_compile_definitions( ServerHeadless PRIVATE FOCLASSIC_SERVER SCRIPT_MULTITHREADING FOCLASSIC_HEADLESS )
+    target_include_directories( ServerHeadless PRIVATE ${FOCLASSIC_INCLUDES} )
+    target_link_libraries( ServerHeadless ${SERVER_LIBS} )
+    if( MSVC )
+        set_property( TARGET ServerHeadless APPEND_STRING PROPERTY LINK_FLAGS "/LARGEADDRESSAWARE " )
+    endif()
+endif()
+
 if( MSVC )
 	# see https://docs.microsoft.com/en-us/cpp/build/reference/largeaddressaware-handle-large-addresses
 	set_property( TARGET Server APPEND_STRING PROPERTY LINK_FLAGS "/LARGEADDRESSAWARE " )
